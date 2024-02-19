@@ -1,0 +1,30 @@
+{
+  "root": true,
+  "env": {
+    "es2022": true,
+    "node": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:prettier/recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": 13,
+    "sourceType": "module"
+  },
+  "plugins": [
+    "@typescript-eslint",
+    "prettier"
+  ],
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "warn",
+    "eqeqeq": "error",
+    "class-methods-use-this": "warn",
+    "prettier/prettier": "error",
+    "no-eval": "error",
+    "no-multi-spaces": "error"
+  }
+}

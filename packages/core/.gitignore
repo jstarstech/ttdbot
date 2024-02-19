@@ -1,0 +1,12 @@
+# Dependency directories
+node_modules
+
+# Editor directories and files
+.idea
+.vscode
+
+# Everything in the data directory
+data/
+
+# Built files
+dist/

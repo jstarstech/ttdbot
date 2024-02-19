@@ -1,0 +1,14 @@
+{
+  "name": "root",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "npm start --workspace=core",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "workspaces": ["packages/*"],
+  "engines": {
+    "node": ">= 18"
+  }
+}

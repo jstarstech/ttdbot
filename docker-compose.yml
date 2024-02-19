@@ -1,0 +1,9 @@
+version: "3"
+
+services:
+  tfwd:
+    image: "tfwd"
+    build: .
+    restart: unless-stopped
+    volumes:
+      - $PWD/config.yml:/app/config.yml

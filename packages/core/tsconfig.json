@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "allowJs": true,
+    "checkJs": false,
+    "outDir": "dist",
+    "rootDir": "./src",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true, /* Disallow inconsistently-cased references to the same file. */
+    "declaration": false, /* Generates corresponding '.d.ts' file. */
+    "strictNullChecks": true,
+    "resolveJsonModule": true,
+    "sourceMap": false,
+    "baseUrl": "./",
+    "paths": {
+      "*": [
+        "*",
+        "types/*"
+      ]
+    },
+    "typeRoots": [
+      "types",
+      "node_modules/@types"
+    ],
+    "types": ["any-shell-escape"]
+  },
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "include": [
+    "src/**/*"
+  ]
+}
