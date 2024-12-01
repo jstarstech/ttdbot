@@ -83,13 +83,18 @@ export default class DiscordClient {
                 this.lastColor = lastMessage.embeds[0].color;
 
                 this.logger.info(
-                    `The last message color is #${this.lastColor.toString(16).padStart(6, '0')} in channel ${this
-                        .channel?.id}`
+                    `The last message color is #${this.lastColor.toString(16).padStart(6, '0')} in channel ${
+                        this.channel?.id
+                    }`
                 );
             }
         });
     }
 
+    /**
+     * Toggles the color between the two predefined colors.
+     * This is used to alternate the color of the embeds in the messages.
+     */
     toggleColor(): number {
         this.lastColor = this.lastColor === this.colors[1] ? this.colors[0] : this.colors[1];
 
