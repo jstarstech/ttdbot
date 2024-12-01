@@ -1,9 +1,16 @@
 {
   "restartable": "rs",
-  "ignore": [".git", "node_modules/", "dist/", "coverage/"],
-  "watch": ["src/"],
+  "ignore": [
+    ".git",
+    "node_modules/",
+    "dist/",
+    "coverage/"
+  ],
+  "watch": [
+    "src/"
+  ],
   "execMap": {
-    "ts": "node --loader ts-node/esm"
+    "ts": "tsx"
   },
   "env": {
     "NODE_ENV": "development"
