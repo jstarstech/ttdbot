@@ -22,7 +22,7 @@ export default class MediaConvert {
 
     constructor(config: Config, logger: winston.Logger) {
         this.config = config;
-        this.logger = logger;
+        this.logger = logger || _logger;
 
         if (pathToFfmpeg === null) {
             throw new Error('The path to ffmpeg is null. Please check module ffmpeg-static');
