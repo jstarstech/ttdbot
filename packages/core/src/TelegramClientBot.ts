@@ -103,6 +103,11 @@ export default class TelegramClientBot extends EventEmitter {
     async downloadMedia(event: NewMessageEvent, eventsGrouped: eventsGrouped | eventsGroupedResult) {
         const buffer = await this.client.downloadMedia(event.message, <DownloadMediaInterface>{ workers: 1 });
 
+        if (!buffer) {
+            this.logger.error('Failed to download media', { messageId: event.message.id });
+            return;
+        }
+
         if (event.message.photo) {
             const fileName = NumberMx(35);
             const file = this.config.dataDir + `/telegram_media/${fileName}.jpeg`;
