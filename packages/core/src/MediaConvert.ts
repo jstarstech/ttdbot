@@ -33,7 +33,7 @@ export default class MediaConvert {
 
     setSrc(src: string) {
         if (src === '') {
-            throw new Error('Destination filename is empty');
+            throw new Error('Source filename is empty');
         }
         this.src = src;
 
@@ -77,7 +77,7 @@ export default class MediaConvert {
 
     async splitBySize(): Promise<string[]> {
         if (this.src === '') {
-            throw new Error('Destination filename is not set');
+            throw new Error('Source filename is not set');
         }
 
         const basename: string = Path.parse(this.src).name;
