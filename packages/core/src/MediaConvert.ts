@@ -157,7 +157,17 @@ export default class MediaConvert {
             });
         });
 
-        const json = JSON.parse(resultJson);
+        let json;
+
+        try {
+            json = JSON.parse(resultJson);
+        } catch (error) {
+            if (error instanceof Error) {
+                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${error.message}`);
+            } else {
+                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${String(error)}`);
+            }
+        }
 
         const duration = json.streams?.[0]?.duration;
 
