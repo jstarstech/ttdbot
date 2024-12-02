@@ -1,7 +1,7 @@
 import config from './Config.js';
 import DiscordClient from './DiscordClient.js';
-import TelegramClientBot from './TelegramClientBot.js';
 import logger from './Logger.js';
+import TelegramClientBot from './TelegramClientBot.js';
 
 logger.info(`Data directory ${config.dataDir}`);
 

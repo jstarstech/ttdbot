@@ -1,5 +1,5 @@
-import fs from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs/promises';
 import prompts from 'prompts';
 import { Api, TelegramClient } from 'telegram';
 import { DownloadMediaInterface } from 'telegram/client/downloads.js';
@@ -8,9 +8,9 @@ import { LogLevel, Logger } from 'telegram/extensions/Logger.js';
 import { StringSession } from 'telegram/sessions/index.js';
 import { setTimeout } from 'timers/promises';
 import winston from 'winston';
-import { eventsGrouped, eventsGroupedResult } from './types.js';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
+import { eventsGrouped, eventsGroupedResult } from './types.js';
 
 function NumberMx(n: number) {
     // prettier-ignore

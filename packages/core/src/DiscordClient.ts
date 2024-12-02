@@ -1,12 +1,12 @@
 import { APIEmbed, AttachmentBuilder, Client, GatewayIntentBits, TextChannel } from 'discord.js';
 import fs from 'fs-extra';
-import path from 'path';
+import path from 'node:path';
 import { Api } from 'telegram';
 import winston from 'winston';
+import { Config } from './Config.js';
+import _logger from './Logger.js';
 import MediaConvert from './MediaConvert.js';
 import { eventsGrouped, eventsGroupedResult } from './types.js';
-import _logger from './Logger.js';
-import { Config } from './Config.js';
 
 const getCircularReplacer = () => {
     const seen = new WeakSet();
