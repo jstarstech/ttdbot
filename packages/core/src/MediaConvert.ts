@@ -24,11 +24,11 @@ export default class MediaConvert {
         this.config = config;
         this.logger = logger || _logger;
 
-        if (pathToFfmpeg === null) {
+        if (typeof pathToFfmpeg === 'string') {
+            this.pathToFfmpeg = pathToFfmpeg;
+        } else {
             throw new Error('The path to ffmpeg is null. Please check module ffmpeg-static');
         }
-
-        this.pathToFfmpeg = pathToFfmpeg;
     }
 
     setSrc(src: string) {
