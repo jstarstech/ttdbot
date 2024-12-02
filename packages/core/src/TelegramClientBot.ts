@@ -1,4 +1,4 @@
-import fs from 'fs-extra';
+import fs from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
 import prompts from 'prompts';
 import { Api, TelegramClient } from 'telegram';
@@ -113,7 +113,11 @@ export default class TelegramClientBot extends EventEmitter {
             const fileName = NumberMx(35);
             const file = this.config.dataDir + `/telegram_media/${fileName}.jpeg`;
 
-            await fs.writeFile(file, <NodeJS.ArrayBufferView>buffer);
+            if (Buffer.isBuffer(buffer)) {
+                await fs.writeFile(file, new Uint8Array(buffer));
+            } else {
+                await fs.writeFile(file, buffer);
+            }
 
             eventsGrouped.mediaFiles.push(file);
         }
@@ -122,7 +126,11 @@ export default class TelegramClientBot extends EventEmitter {
             const fileName = NumberMx(35);
             const file = this.config.dataDir + `/telegram_media/${fileName}.mp4`;
 
-            await fs.writeFile(file, <NodeJS.ArrayBufferView>buffer);
+            if (Buffer.isBuffer(buffer)) {
+                await fs.writeFile(file, new Uint8Array(buffer));
+            } else {
+                await fs.writeFile(file, buffer);
+            }
 
             eventsGrouped.mediaFiles.push(file);
         }
