@@ -137,13 +137,11 @@ export default class TelegramClientBot extends EventEmitter {
         const ac = new AbortController();
 
         if (!this.eventsGrouped.has(groupedId)) {
-            const eventsGrouped: eventsGrouped = {
+            this.eventsGrouped.set(groupedId, {
                 events: [event],
                 mediaFiles: [],
                 ac
-            };
-
-            this.eventsGrouped.set(groupedId, eventsGrouped);
+            });
         } else {
             const eventsGrouped = this.eventsGrouped.get(groupedId) as eventsGrouped;
             eventsGrouped.ac.abort();
