@@ -175,9 +175,9 @@ export default class TelegramClientBot extends EventEmitter {
             mediaFiles: eventsGrouped.mediaFiles
         };
 
-        this.eventsGrouped.delete(groupedId);
-
         this.emit('newMessage', eventsGroupedResult);
+
+        this.eventsGrouped.delete(groupedId);
     }
 
     async _onNewMessage(event: NewMessageEvent) {
