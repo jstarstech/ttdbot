@@ -158,6 +158,12 @@ export default class MediaConvert {
 
         const json = JSON.parse(resultJson);
 
-        return Math.trunc(Number(json.streams[0].duration));
+        const duration = json.streams?.[0]?.duration;
+
+        if (duration === undefined || isNaN(Number(duration))) {
+            throw new Error('Unable to retrieve duration from ffprobe output');
+        }
+
+        return Math.trunc(Number(duration));
     }
 }
