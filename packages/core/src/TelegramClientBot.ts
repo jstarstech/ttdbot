@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import { EventEmitter } from 'node:events';
 import prompts from 'prompts';
 import { Api, TelegramClient } from 'telegram';
-import { DownloadMediaInterface } from 'telegram/client/downloads';
+import { DownloadMediaInterface } from 'telegram/client/downloads.js';
 import { NewMessage, NewMessageEvent } from 'telegram/events/index.js';
 import { LogLevel, Logger } from 'telegram/extensions/Logger.js';
 import { StringSession } from 'telegram/sessions/index.js';
