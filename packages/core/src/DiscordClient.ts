@@ -4,8 +4,9 @@ import path from 'path';
 import { Api } from 'telegram';
 import winston from 'winston';
 import MediaConvert from './MediaConvert.js';
-import { Config, eventsGrouped, eventsGroupedResult } from './types.js';
+import { eventsGrouped, eventsGroupedResult } from './types.js';
 import _logger from './Logger.js';
+import { Config } from './Config.js';
 
 const getCircularReplacer = () => {
     const seen = new WeakSet();

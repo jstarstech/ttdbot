@@ -8,7 +8,8 @@ import { LogLevel, Logger } from 'telegram/extensions/Logger.js';
 import { StringSession } from 'telegram/sessions/index.js';
 import { setTimeout } from 'timers/promises';
 import winston from 'winston';
-import { Config, eventsGrouped, eventsGroupedResult } from './types.js';
+import { eventsGrouped, eventsGroupedResult } from './types.js';
+import { Config } from './Config.js';
 import _logger from './Logger.js';
 
 function NumberMx(n: number) {

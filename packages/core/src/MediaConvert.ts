@@ -5,7 +5,7 @@ import { exec } from 'node:child_process';
 import Path, { resolve } from 'node:path';
 import process from 'node:process';
 import winston from 'winston';
-import { Config } from './types.js';
+import { Config } from './Config.js';
 import _logger from './Logger.js';
 
 if (pathToFfmpeg === null) {
