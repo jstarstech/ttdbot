@@ -9,6 +9,7 @@ import { StringSession } from 'telegram/sessions/index.js';
 import { setTimeout } from 'timers/promises';
 import winston from 'winston';
 import { Config, eventsGrouped, eventsGroupedResult } from './types.js';
+import _logger from './Logger.js';
 
 function NumberMx(n: number) {
     // prettier-ignore
@@ -46,10 +47,10 @@ export default class TelegramClientBot extends EventEmitter {
     private eventsGrouped: Map<number, eventsGrouped>;
     private readonly logger: winston.Logger;
 
-    constructor(config: Config, logger: winston.Logger) {
+    constructor(config: Config, logger: winston.Logger | null = null) {
         super();
 
-        this.logger = logger;
+        this.logger = logger || _logger;
 
         this.config = config;
         this.eventsGrouped = new Map<number, eventsGrouped>();

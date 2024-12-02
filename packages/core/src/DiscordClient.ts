@@ -5,6 +5,7 @@ import { Api } from 'telegram';
 import winston from 'winston';
 import MediaConvert from './MediaConvert.js';
 import { Config, eventsGrouped, eventsGroupedResult } from './types.js';
+import _logger from './Logger.js';
 
 const getCircularReplacer = () => {
     const seen = new WeakSet();
@@ -34,10 +35,10 @@ export default class DiscordClient {
     private lastColor: number;
     private readonly logger: winston.Logger;
 
-    constructor(config: Config, logger: winston.Logger) {
+    constructor(config: Config, logger: winston.Logger | null = null) {
         this.config = config;
         this.lastColor = this.colors[0];
-        this.logger = logger;
+        this.logger = logger || _logger;
 
         this.eventsGrouped = new Map<number, eventsGrouped>();
 

@@ -6,6 +6,12 @@ import Path, { resolve } from 'node:path';
 import process from 'node:process';
 import winston from 'winston';
 import { Config } from './types.js';
+import _logger from './Logger.js';
+
+if (pathToFfmpeg === null) {
+    _logger.error('The pathToFfmpeg is null. Please check module ffmpeg-static');
+    process.exit(1);
+}
 
 export default class MediaConvert {
     private src = '';
@@ -19,8 +25,7 @@ export default class MediaConvert {
         this.logger = logger;
 
         if (pathToFfmpeg === null) {
-            this.logger.error('The pathToFfmpeg is null. Please check module ffmpeg-static');
-            process.exit(1);
+            throw new Error('The path to ffmpeg is null. Please check module ffmpeg-static');
         }
 
         this.pathToFfmpeg = pathToFfmpeg;

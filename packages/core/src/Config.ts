@@ -31,3 +31,11 @@ export async function initConfig() {
 
     return config;
 }
+
+const Config = await initConfig().catch(e => {
+    console.error(e);
+
+    process.exit(1);
+});
+
+export default Config;
