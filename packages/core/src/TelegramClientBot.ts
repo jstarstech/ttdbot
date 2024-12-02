@@ -144,7 +144,7 @@ export default class TelegramClientBot extends EventEmitter {
             eventsGrouped.ac.abort();
 
             if (msg.message !== undefined && msg.message !== '') {
-                // Event with a message text add first
+                // Add event with a message text first
                 eventsGrouped.events.unshift(event);
             } else {
                 eventsGrouped.events.push(event);
