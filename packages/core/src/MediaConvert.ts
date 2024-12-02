@@ -125,7 +125,7 @@ export default class MediaConvert {
 			resolve(process.cwd(), nextfilename)
 		]);
 
-        return await new Promise((resolve, reject) => {
+        return new Promise((resolve, reject) => {
             exec(ffmpegCmd, (err, stdout) => {
                 if (err) {
                     return reject(err);
