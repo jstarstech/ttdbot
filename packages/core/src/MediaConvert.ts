@@ -114,7 +114,7 @@ export default class MediaConvert {
 			this.pathToFfmpeg,
 			'-y',
 			'-i', resolve(process.cwd(), file),
-			...(cur_duration > 0? ['-ss', cur_duration.toString()]: []),
+            ...(cur_duration > 0 ? ['-ss', cur_duration.toString()] : []),
 			'-fs', '7920000',
 			'-c:v', 'libx264',
 			'-preset', 'medium',
