@@ -221,7 +221,11 @@ export default class DiscordClient {
 
         try {
             for (const [i, embeds] of embedsChunks.entries()) {
-                await channel.send({ embeds, files: filesChunks[i] });
+                try {
+                    await channel.send({ embeds, files: filesChunks[i] });
+                } catch (error) {
+                    this.logger.error(`Failed to send message chunk ${i}`, { error });
+                }
             }
         } catch (e) {
             this.logger.error(`Error forwarding message ${url}`, {
