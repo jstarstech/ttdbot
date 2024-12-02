@@ -50,7 +50,7 @@ export default class DiscordClient {
         });
     }
 
-    async init() {
+    async init(): Promise<void> {
         const { promise, resolve, reject } = Promise.withResolvers<void>();
 
         await this.discordClient.login(this.config.discord_bot_token);
@@ -82,7 +82,7 @@ export default class DiscordClient {
         return this.channel;
     }
 
-    async getLastMessageColor() {
+    async getLastMessageColor(): Promise<void> {
         const channel = await this.getChannel();
 
         if (channel === undefined) {
@@ -120,7 +120,7 @@ export default class DiscordClient {
         return this.lastColor;
     }
 
-    async postMessage(eventsGroupedResult: eventsGroupedResult) {
+    async postMessage(eventsGroupedResult: eventsGroupedResult): Promise<void> {
         const channel = await this.getChannel();
 
         if (channel === undefined) {
