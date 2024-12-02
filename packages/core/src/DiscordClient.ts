@@ -45,25 +45,37 @@ export default class DiscordClient {
 
         this.discordClient = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-        this.discordClient.on('ready', () => {
-            this.logger.info('Running Discord.js client');
+        this.discordClient.on('error', err => {
+            this.logger.error(err);
         });
     }
 
     async init() {
+        const { promise, resolve, reject } = Promise.withResolvers<void>();
+
         await this.discordClient.login(this.config.discord_bot_token);
+
+        this.discordClient.on('ready', () => {
+            this.logger.info('Running Discord.js client');
+
+            resolve();
+        });
+
+        await promise;
 
         await this.getLastMessageColor();
     }
 
-    async getChannel(): Promise<TextChannel> {
+    async getChannel(): Promise<TextChannel | undefined> {
         if (this.channel instanceof TextChannel) {
             return this.channel;
         }
 
-        this.channel = (await this.discordClient.channels.fetch(this.config.discord_channel[0])) as TextChannel;
+        this.channel = this.discordClient.channels.cache.find((channel): channel is TextChannel => {
+            return channel.id === this.config.discord_channel[0] && channel.type === 0;
+        });
 
-        if (this.channel === null) {
+        if (this.channel === undefined) {
             this.logger.error(`Cannot fetch the channel ${this.config.discord_channel[0]}`);
         }
 
@@ -73,8 +85,13 @@ export default class DiscordClient {
     async getLastMessageColor() {
         const channel = await this.getChannel();
 
+        if (channel === undefined) {
+            return;
+        }
+
         await channel.messages.fetch({ limit: 1 }).then(messages => {
             const lastMessage = messages.first();
+
             if (!lastMessage || !lastMessage.author.bot || lastMessage.embeds.length === 0) {
                 this.logger.warn(`Cannot fetch the last message color from the channel ${this.channel?.id}`);
 
@@ -105,6 +122,13 @@ export default class DiscordClient {
 
     async postMessage(eventsGroupedResult: eventsGroupedResult) {
         const channel = await this.getChannel();
+
+        if (channel === undefined) {
+            this.logger.error('Cannot fetch the channel');
+
+            return;
+        }
+
         const color = this.toggleColor();
         const embedsChunks: APIEmbed[][] = [];
         const filesChunks: (string | AttachmentBuilder)[][] = [];
