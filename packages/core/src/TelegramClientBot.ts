@@ -158,7 +158,7 @@ export default class TelegramClientBot extends EventEmitter {
         try {
             await setTimeout(5000, null, { signal: ac.signal });
         } catch (e) {
-            this.logger.error('Error processing grouped event', { error: e, groupedId: groupedId });
+            this.logger.debug('New grouped event received', { groupedId: groupedId });
             return;
         }
 
