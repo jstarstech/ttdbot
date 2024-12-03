@@ -157,7 +157,7 @@ export default class MediaConvert {
             });
         });
 
-        let json;
+        let json: { streams?: { duration?: string }[] };
 
         try {
             json = JSON.parse(resultJson);
