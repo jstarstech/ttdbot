@@ -108,13 +108,13 @@ export default class MediaConvert {
         return resultFiles;
     }
 
-    async splitVideoPart(file: string, cur_duration: number, nextfilename: string): Promise<string> {
+    async splitVideoPart(file: string, curDuration: number, nextfilename: string): Promise<string> {
         // prettier-ignore
         const ffmpegCmd = shell([
-			this.pathToFfmpeg,
-			'-y',
-			'-i', resolve(process.cwd(), file),
-            ...(cur_duration > 0 ? ['-ss', cur_duration.toString()] : []),
+            this.pathToFfmpeg,
+            '-y',
+            '-i', resolve(process.cwd(), file),
+            ...(curDuration > 0 ? ['-ss', curDuration.toString()] : []),
 			'-fs', '7920000',
 			'-c:v', 'libx264',
 			'-preset', 'medium',
