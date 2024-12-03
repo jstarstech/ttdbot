@@ -31,12 +31,13 @@ function NumberMx(n: number) {
 
 class CustomLogger extends Logger {
     private logger: winston.Logger;
+
     constructor(logger: winston.Logger) {
         super();
         this.logger = logger;
     }
 
-    log(level: LogLevel, message: string) {
+    override log(level: LogLevel, message: string) {
         this.logger.log(level, message);
     }
 }
