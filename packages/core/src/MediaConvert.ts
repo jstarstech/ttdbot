@@ -99,8 +99,8 @@ export default class MediaConvert {
 
             resultFiles.push(nextFileName);
 
-            // console.log(`Duration of ${nextfilename}: ${new_duration}`)
-            // console.log(`Part No. ${i} starts at ${cur_duration}`)
+            this.logger.debug(`Duration of ${nextFileName}: ${newDuration}`);
+            this.logger.debug(`Part No. ${i} starts at ${currentDuration}`);
 
             i++;
         }
