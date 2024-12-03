@@ -53,16 +53,16 @@ export default class MediaConvert {
     async convert(): Promise<boolean> {
         // prettier-ignore
         const ffmpegCmd = shell([
-			this.pathToFfmpeg,
-			'-i', resolve(process.cwd(), this.src),
-			'-c:v', 'libx264',
-			'-preset', 'medium',
-			'-crf', '31',
-			'-c:a', 'aac',
-			'-qscale:a', '0.75',
-			'-vf', 'scale=trunc(iw*1/2)*2:trunc(ih*1/2)*2',
-			resolve(process.cwd(), this.dest)
-		]);
+            this.pathToFfmpeg,
+            '-i', resolve(process.cwd(), this.src),
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '31',
+            '-c:a', 'aac',
+            '-qscale:a', '0.75',
+            '-vf', 'scale=trunc(iw*1/2)*2:trunc(ih*1/2)*2',
+            resolve(process.cwd(), this.dest)
+        ]);
 
         return new Promise((resolve, reject) => {
             exec(ffmpegCmd, err => {
@@ -115,15 +115,15 @@ export default class MediaConvert {
             '-y',
             '-i', resolve(process.cwd(), file),
             ...(curDuration > 0 ? ['-ss', curDuration.toString()] : []),
-			'-fs', '7920000',
-			'-c:v', 'libx264',
-			'-preset', 'medium',
-			'-crf', '31',
-			'-c:a', 'aac',
-			'-qscale:a', '0.75',
-			'-vf', 'scale=trunc(iw*1/2)*2:trunc(ih*1/2)*2',
-			resolve(process.cwd(), nextfilename)
-		]);
+            '-fs', '7920000',
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', '31',
+            '-c:a', 'aac',
+            '-qscale:a', '0.75',
+            '-vf', 'scale=trunc(iw*1/2)*2:trunc(ih*1/2)*2',
+            resolve(process.cwd(), nextfilename)
+        ]);
 
         return new Promise((resolve, reject) => {
             exec(ffmpegCmd, (err, stdout) => {
@@ -139,13 +139,13 @@ export default class MediaConvert {
     async getDuration(file: string): Promise<number> {
         // prettier-ignore
         const ffprobeCmd = shell([
-			pathToFfprobe,
-			'-i', resolve(process.cwd(), file),
-			'-v', 'quiet',
-			'-print_format', 'json',
-			'-show_streams',
-			'-show_format',
-		]);
+            pathToFfprobe,
+            '-i', resolve(process.cwd(), file),
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_streams',
+            '-show_format',
+        ]);
 
         const resultJson: string = await new Promise((resolve, reject) => {
             exec(ffprobeCmd, (err, stdout) => {
