@@ -82,24 +82,24 @@ export default class MediaConvert {
 
         const basename: string = Path.parse(this.src).name;
         const extension = 'mp4';
+        const totalDuration = await this.getDuration(this.src);
         let i = 1;
         let currentDuration = 0;
-        const duration = await this.getDuration(this.src);
 
         const resultFiles: string[] = [];
 
-        while (currentDuration < duration) {
+        while (currentDuration < totalDuration) {
             const nextFileName = `${this.config.dataDir}/convert/${basename}-${i}.${extension}`;
 
             await this.splitVideoPart(this.src, currentDuration, nextFileName);
 
-            const newDuration: number = await this.getDuration(nextFileName);
+            const partDuration: number = await this.getDuration(nextFileName);
 
-            currentDuration = currentDuration + newDuration;
+            currentDuration += partDuration;
 
             resultFiles.push(nextFileName);
 
-            this.logger.debug(`Duration of ${nextFileName}: ${newDuration}`);
+            this.logger.debug(`Duration of ${nextFileName}: ${partDuration}`);
             this.logger.debug(`Part No. ${i} starts at ${currentDuration}`);
 
             i++;
