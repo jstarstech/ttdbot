@@ -95,12 +95,12 @@ export default class MediaConvert {
 
             const partDuration: number = await this.getDuration(nextFileName);
 
+            this.logger.debug(`Duration of ${nextFileName}: ${partDuration}`);
+            this.logger.debug(`Part No. ${i} starts at ${currentDuration}`);
+
             currentDuration += partDuration;
 
             resultFiles.push(nextFileName);
-
-            this.logger.debug(`Duration of ${nextFileName}: ${partDuration}`);
-            this.logger.debug(`Part No. ${i} starts at ${currentDuration}`);
 
             i++;
         }
