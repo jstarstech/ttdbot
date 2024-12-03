@@ -30,7 +30,7 @@ function NumberMx(n: number) {
 }
 
 class CustomLogger extends Logger {
-    private logger: winston.Logger;
+    private readonly logger: winston.Logger;
 
     constructor(logger: winston.Logger) {
         super();
