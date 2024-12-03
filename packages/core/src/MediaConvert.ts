@@ -93,9 +93,9 @@ export default class MediaConvert {
 
             await this.splitVideoPart(this.src, currentDuration, nextFileName);
 
-            const new_duration: number = await this.getDuration(nextFileName);
+            const newDuration: number = await this.getDuration(nextFileName);
 
-            currentDuration = currentDuration + new_duration;
+            currentDuration = currentDuration + newDuration;
 
             resultFiles.push(nextFileName);
 
