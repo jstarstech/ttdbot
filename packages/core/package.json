@@ -12,7 +12,7 @@
     "dev:debug": "nodemon --config nodemon.json --inspect-brk src/main.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rimraf dist/",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest"
   },
   "author": "",
   "license": "ISC",
@@ -21,12 +21,12 @@
     "discord.js": "^14.16.3",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
-    "fs-extra": "^11.2.0",
+    "fs-extra": "^11.3.2",
     "js-yaml": "^4.1.0",
     "prompts": "^2.4.2",
     "telegram": "^2.26.8",
-    "tsx": "^4.19.2",
-    "winston": "^3.17.0"
+    "tsx": "^4.21.0",
+    "winston": "^3.18.3"
   },
   "devDependencies": {
     "@types/ffprobe-static": "^2.0.3",
@@ -34,8 +34,8 @@
     "@types/js-yaml": "^4.0.9",
     "@types/minio": "^7.1.1",
     "@types/prompts": "^2.4.9",
-    "@typescript-eslint/eslint-plugin": "^8.16.0",
-    "@typescript-eslint/parser": "^8.16.0",
+    "@typescript-eslint/eslint-plugin": "^8.48.1",
+    "@typescript-eslint/parser": "^8.48.1",
     "eslint": "^9.16.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
@@ -43,7 +43,8 @@
     "prettier": "^3.4.1",
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
   },
   "engines": {
     "node": ">= 18"

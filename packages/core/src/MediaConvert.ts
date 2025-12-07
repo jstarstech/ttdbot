@@ -20,7 +20,7 @@ export default class MediaConvert {
     private logger: winston.Logger;
     private readonly pathToFfmpeg: string;
 
-    constructor(config: Config, logger: winston.Logger) {
+    constructor(config: Config, logger?: winston.Logger) {
         this.config = config;
         this.logger = logger || _logger;
 
