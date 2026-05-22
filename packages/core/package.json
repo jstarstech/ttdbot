@@ -1,7 +1,7 @@
 {
   "name": "core",
-  "version": "1.0.0",
-  "description": "",
+  "version": "0.1.0",
+  "description": "Telegram to Discord forward bot.",
   "main": "dist/main.js",
   "type": "module",
   "scripts": {
@@ -14,8 +14,23 @@
     "clean": "rimraf dist/",
     "test": "vitest"
   },
-  "author": "",
-  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jstarstech/ttdbot"
+  },
+  "homepage": "https://github.com/jstarstech/ttdbot",
+  "bugs": {
+    "url": "https://github.com/jstarstech/ttdbot/issues"
+  },
+  "author": "jstarstech",
+  "keywords": [
+    "telegram",
+    "discord",
+    "forward",
+    "bot",
+    "ttdbot"
+  ],
+  "license": "MIT",
   "dependencies": {
     "any-shell-escape": "^0.1.1",
     "discord.js": "^14.26.4",
