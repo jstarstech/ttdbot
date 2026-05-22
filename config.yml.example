@@ -1,0 +1,29 @@
+dataDir: "data"
+logLevel: "info"
+
+# Telegram API id. Read more here: https://core.telegram.org/api/obtaining_api_id
+api_id: 0
+
+# Telegram API hash. Read more here: https://core.telegram.org/api/obtaining_api_id
+api_hash: "put-your-telegram-api-hash-here"
+
+# Discord bot token.
+discord_bot_token: "put-your-discord-bot-token-here"
+
+# Telegram session string.
+session_name: "put-your-telegram-session-here"
+
+# The Telegram channel names you want to forward messages from.
+input_channel_names:
+  - "channel name"
+
+# The Telegram channel IDs you want to forward messages from.
+input_channel_ids:
+  - 0
+
+# Output channel ids. Keep as an empty list unless you use it in code.
+output_channel_ids: []
+
+# The Discord channel id to forward messages to.
+discord_channel:
+  - "0"
