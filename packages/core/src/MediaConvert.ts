@@ -162,7 +162,7 @@ export default class MediaConvert {
             });
         });
 
-        let json: { streams?: { duration?: string }[] };
+        let json: { streams?: { duration?: string }[]; format?: { duration?: string } };
 
         try {
             json = JSON.parse(resultJson);
@@ -178,7 +178,7 @@ export default class MediaConvert {
             }
         }
 
-        const duration = json.streams?.[0]?.duration;
+        const duration = json.streams?.[0]?.duration ?? json.format?.duration;
 
         if (duration === undefined || isNaN(Number(duration))) {
             throw new Error('Unable to retrieve duration from ffprobe output');

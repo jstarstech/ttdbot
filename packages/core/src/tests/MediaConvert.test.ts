@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, test, beforeEach, vi } from 'vitest';
-import { exec } from 'node:child_process';
 import MediaConvert from '../MediaConvert';
 import { Config } from '../Config.js';
 import winston from 'winston';
+
+vi.mock('node:child_process', () => ({
+    exec: vi.fn(),
+    spawn: vi.fn()
+}));
 
 const mockConfig: Config = {
     dataDir: '/mock/data/dir',
@@ -68,6 +72,18 @@ describe('MediaConvert', () => {
         ]);
         expect(getDurationSpy).toHaveBeenCalledTimes(4);
         expect(splitVideoPartSpy).toHaveBeenCalledTimes(3);
+    });
+
+    test('should use container duration when stream duration is missing', async () => {
+        const exec = (await import('node:child_process')).exec as unknown as ReturnType<typeof vi.fn>;
+
+        exec.mockImplementation((command, callback) => {
+            callback(null, JSON.stringify({ format: { duration: '12.5' } }), '');
+            return {} as never;
+        });
+
+        await expect(MediaConvert.getDuration('source.mp4')).resolves.toBe(12.5);
+        expect(exec).toHaveBeenCalled();
     });
 
     // @TODO Enable these tests after adding source.mp4 file
