@@ -1,26 +1,28 @@
-FROM node:18-alpine as builder
+FROM node:22.12.0-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
+COPY packages/core/package*.json ./packages/core/
 
-RUN npm install -D
+RUN npm ci
 
 COPY . .
 
 RUN npm run build
 
-FROM node:18-alpine
+FROM node:22.12.0-alpine
 
 ENV NODE_ENV=production
 WORKDIR /app
 
 COPY package*.json ./
+COPY packages/core/package*.json ./packages/core/
 
-RUN npm install --production
+RUN npm ci --omit=dev
 
-COPY --from=builder /app/dist/ /app
+COPY --from=builder /app/packages/core/dist/ ./packages/core/dist/
 
-RUN mkdir data
+RUN mkdir -p data
 
 VOLUME ["/app/data/"]
-CMD ["node", "main.js"]
+CMD ["npm", "start", "--workspace=core"]

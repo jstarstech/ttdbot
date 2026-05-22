@@ -2,4 +2,5 @@ data
 config.yml
 node_modules
 dist
+packages/*/dist
 .gitignore
