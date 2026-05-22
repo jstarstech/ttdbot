@@ -1,4 +1,4 @@
-import { APIEmbed, AttachmentBuilder, Client, GatewayIntentBits, TextChannel } from 'discord.js';
+import { APIEmbed, AttachmentBuilder, ChannelType, Client, GatewayIntentBits, TextChannel } from 'discord.js';
 import fs from 'fs-extra';
 import path from 'node:path';
 import { Api } from 'telegram';
@@ -72,7 +72,7 @@ export default class DiscordClient {
         }
 
         this.channel = this.discordClient.channels.cache.find((channel): channel is TextChannel => {
-            return channel.id === this.config.discord_channel[0] && channel.type === 0;
+            return channel.id === this.config.discord_channel[0] && channel.type === ChannelType.GuildText;
         });
 
         if (this.channel === undefined) {

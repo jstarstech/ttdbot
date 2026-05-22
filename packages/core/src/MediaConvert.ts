@@ -163,9 +163,13 @@ export default class MediaConvert {
             json = JSON.parse(resultJson);
         } catch (error) {
             if (error instanceof Error) {
-                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${error.message}`);
+                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${error.message}`, {
+                    cause: error
+                });
             } else {
-                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${String(error)}`);
+                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${String(error)}`, {
+                    cause: error
+                });
             }
         }
 
