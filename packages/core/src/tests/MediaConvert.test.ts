@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach } from 'vitest';
+import { afterEach, describe, expect, test, beforeEach, vi } from 'vitest';
 import { exec } from 'node:child_process';
 import MediaConvert from '../MediaConvert';
 import { Config } from '../Config.js';
@@ -29,6 +29,10 @@ describe('MediaConvert', () => {
         mediaConvert = new MediaConvert(mockConfig, mockLogger);
     });
 
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     test('should set source file', () => {
         mediaConvert.setSrc('source.mp4');
         expect(mediaConvert['src']).toBe('source.mp4');
@@ -45,6 +49,25 @@ describe('MediaConvert', () => {
 
     test('should throw error when setting empty destination file', () => {
         expect(() => mediaConvert.setDst('')).toThrow('Destination filename is empty');
+    });
+
+    test('should split video by size with fractional durations', async () => {
+        mediaConvert.setSrc('source.mp4');
+
+        const getDurationSpy = vi.spyOn(MediaConvert, 'getDuration').mockImplementation(async file => {
+            return file === 'source.mp4' ? 1.1 : 0.4;
+        });
+        const splitVideoPartSpy = vi.spyOn(mediaConvert, 'splitVideoPart').mockResolvedValue('ok');
+
+        const result = await mediaConvert.splitBySize();
+
+        expect(result).toEqual([
+            '/mock/data/dir/convert/source-1.mp4',
+            '/mock/data/dir/convert/source-2.mp4',
+            '/mock/data/dir/convert/source-3.mp4'
+        ]);
+        expect(getDurationSpy).toHaveBeenCalledTimes(4);
+        expect(splitVideoPartSpy).toHaveBeenCalledTimes(3);
     });
 
     // @TODO Enable these tests after adding source.mp4 file

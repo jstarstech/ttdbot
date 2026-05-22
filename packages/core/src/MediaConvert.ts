@@ -98,6 +98,10 @@ export default class MediaConvert {
             this.logger.debug(`Duration of ${nextFileName}: ${partDuration}`);
             this.logger.debug(`Part No. ${i} starts at ${currentDuration}`);
 
+            if (partDuration <= 0) {
+                throw new Error(`Unable to split ${nextFileName}: ffprobe reported a non-positive duration`);
+            }
+
             currentDuration += partDuration;
 
             resultFiles.push(nextFileName);
@@ -179,6 +183,6 @@ export default class MediaConvert {
             throw new Error('Unable to retrieve duration from ffprobe output');
         }
 
-        return Math.trunc(Number(duration));
+        return Number(duration);
     }
 }
