@@ -1,7 +1,7 @@
 import shell from 'any-shell-escape';
 import pathToFfmpeg from 'ffmpeg-static';
 import { path as pathToFfprobe } from 'ffprobe-static';
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import Path, { resolve } from 'node:path';
 import process from 'node:process';
 import winston from 'winston';
@@ -52,8 +52,7 @@ export default class MediaConvert {
 
     async convert(): Promise<boolean> {
         // prettier-ignore
-        const ffmpegCmd = shell([
-            this.pathToFfmpeg,
+        const ffmpegArgs = [
             '-i', resolve(process.cwd(), this.src),
             '-c:v', 'libx264',
             '-preset', 'medium',
@@ -62,17 +61,9 @@ export default class MediaConvert {
             '-qscale:a', '0.75',
             '-vf', 'scale=trunc(iw*1/2)*2:trunc(ih*1/2)*2',
             resolve(process.cwd(), this.dest)
-        ]);
+        ];
 
-        return new Promise((resolve, reject) => {
-            exec(ffmpegCmd, err => {
-                if (err) {
-                    return reject(err);
-                }
-
-                resolve(true);
-            });
-        });
+        return this.runFfmpeg(ffmpegArgs);
     }
 
     async splitBySize(): Promise<string[]> {
@@ -112,10 +103,9 @@ export default class MediaConvert {
         return resultFiles;
     }
 
-    async splitVideoPart(file: string, curDuration: number, nextfilename: string): Promise<string> {
+    async splitVideoPart(file: string, curDuration: number, nextfilename: string): Promise<void> {
         // prettier-ignore
-        const ffmpegCmd = shell([
-            this.pathToFfmpeg,
+        const ffmpegArgs = [
             '-y',
             '-i', resolve(process.cwd(), file),
             ...(curDuration > 0 ? ['-ss', curDuration.toString()] : []),
@@ -127,16 +117,27 @@ export default class MediaConvert {
             '-qscale:a', '0.75',
             '-vf', 'scale=trunc(iw*1/2)*2:trunc(ih*1/2)*2',
             resolve(process.cwd(), nextfilename)
-        ]);
+        ];
 
-        return new Promise((resolve, reject) => {
-            exec(ffmpegCmd, (err, stdout) => {
-                if (err) {
-                    return reject(err);
-                }
+        await this.runFfmpeg(ffmpegArgs);
+    }
 
-                resolve(stdout);
+    private async runFfmpeg(args: string[]): Promise<boolean> {
+        return await new Promise((resolve, reject) => {
+            const child = spawn(this.pathToFfmpeg, args, {
+                stdio: ['ignore', 'ignore', 'pipe']
             });
+
+            child.once('error', reject);
+            child.once('close', code => {
+                if (code === 0) {
+                    resolve(true);
+                } else {
+                    reject(new Error(`ffmpeg exited with code ${code ?? 'null'}`));
+                }
+            });
+
+            child.stderr.resume();
         });
     }
 
