@@ -53,13 +53,13 @@ export default class DiscordClient {
     async init(): Promise<void> {
         const { promise, resolve, reject } = Promise.withResolvers<void>();
 
-        await this.discordClient.login(this.config.discord_bot_token);
-
-        this.discordClient.on('ready', () => {
+        this.discordClient.once('clientReady', () => {
             this.logger.info('Running Discord.js client');
 
             resolve();
         });
+
+        await this.discordClient.login(this.config.discord_bot_token);
 
         await promise;
 
