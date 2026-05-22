@@ -4,7 +4,7 @@ import { NewMessageEvent } from 'telegram/events/index.js';
 export interface eventsGrouped {
     events: NewMessageEvent[];
     mediaFiles: (string | AttachmentBuilder)[];
-    ac: AbortController;
+    timeout: ReturnType<typeof setTimeout> | null;
 }
 
-export type eventsGroupedResult = Omit<eventsGrouped, 'ac'>;
+export type eventsGroupedResult = Omit<eventsGrouped, 'timeout'>;

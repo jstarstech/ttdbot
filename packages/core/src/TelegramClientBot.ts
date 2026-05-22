@@ -6,7 +6,6 @@ import { DownloadMediaInterface } from 'telegram/client/downloads.js';
 import { NewMessage, NewMessageEvent } from 'telegram/events/index.js';
 import { LogLevel, Logger } from 'telegram/extensions/Logger.js';
 import { StringSession } from 'telegram/sessions/index.js';
-import { setTimeout } from 'timers/promises';
 import winston from 'winston';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
@@ -66,36 +65,37 @@ export default class TelegramClientBot extends EventEmitter {
     }
 
     private scheduleGroupedMessageProcessing(groupedId: number, groupedEvents: eventsGrouped): void {
-        void this.processGroupedMessage(groupedId, groupedEvents);
+        if (groupedEvents.timeout !== null) {
+            clearTimeout(groupedEvents.timeout);
+        }
+
+        groupedEvents.timeout = setTimeout(() => {
+            groupedEvents.timeout = null;
+            void this.processGroupedMessage(groupedId, groupedEvents);
+        }, 5000);
     }
 
     private async processGroupedMessage(groupedId: number, groupedEvents: eventsGrouped): Promise<void> {
-        try {
-            await setTimeout(5000, null, { signal: groupedEvents.ac.signal });
-        } catch {
-            this.logger.debug('New grouped event received', { groupedId });
-            return;
-        }
-
         const currentGroupedEvents = this.eventsGrouped.get(groupedId);
 
-        if (currentGroupedEvents !== groupedEvents) {
-            return;
-        }
-
         if (groupedEvents.events.length === 0) {
-            this.eventsGrouped.delete(groupedId);
+            if (currentGroupedEvents === groupedEvents) {
+                this.eventsGrouped.delete(groupedId);
+            }
+
             return;
         }
 
         const nextGroupedEvents: eventsGrouped = {
             events: [],
             mediaFiles: [],
-            ac: new AbortController()
+            timeout: null
         };
 
-        this.eventsGrouped.set(groupedId, nextGroupedEvents);
-        this.scheduleGroupedMessageProcessing(groupedId, nextGroupedEvents);
+        if (currentGroupedEvents === groupedEvents) {
+            this.eventsGrouped.set(groupedId, nextGroupedEvents);
+            this.scheduleGroupedMessageProcessing(groupedId, nextGroupedEvents);
+        }
 
         try {
             // All events are collected, now process them.
@@ -193,28 +193,24 @@ export default class TelegramClientBot extends EventEmitter {
         }
 
         const groupedId = msg.groupedId.toJSNumber();
-        const ac = new AbortController();
 
         if (!this.eventsGrouped.has(groupedId)) {
             const groupedEvents: eventsGrouped = {
                 events: [event],
                 mediaFiles: [],
-                ac
+                timeout: null
             };
 
             this.eventsGrouped.set(groupedId, groupedEvents);
             this.scheduleGroupedMessageProcessing(groupedId, groupedEvents);
         } else {
             const groupedEvents = this.eventsGrouped.get(groupedId) as eventsGrouped;
-            groupedEvents.ac.abort();
-
             if (msg.message !== undefined && msg.message !== '') {
                 // Add event with a message text first
                 groupedEvents.events.unshift(event);
             } else {
                 groupedEvents.events.push(event);
             }
-            groupedEvents.ac = ac;
             this.scheduleGroupedMessageProcessing(groupedId, groupedEvents);
         }
     }
