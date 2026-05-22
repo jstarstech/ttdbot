@@ -172,22 +172,25 @@ export default class TelegramClientBot extends EventEmitter {
             return;
         }
 
-        // All events are collected, now process them.
+        const groupedEvents = this.eventsGrouped.get(groupedId) as eventsGrouped;
 
-        const eventsGrouped = this.eventsGrouped.get(groupedId) as eventsGrouped;
+        try {
+            // All events are collected, now process them.
+            for (const _event of groupedEvents.events) {
+                await this.downloadMedia(_event, groupedEvents);
+            }
 
-        for (const _event of eventsGrouped.events) {
-            await this.downloadMedia(_event, eventsGrouped);
+            const eventsGroupedResult: eventsGroupedResult = {
+                events: groupedEvents.events,
+                mediaFiles: groupedEvents.mediaFiles
+            };
+
+            this.emit('newMessage', eventsGroupedResult);
+        } catch (error) {
+            this.logger.error(`Failed to process grouped message ${groupedId}`, { error });
+        } finally {
+            this.eventsGrouped.delete(groupedId);
         }
-
-        const eventsGroupedResult: eventsGroupedResult = {
-            events: eventsGrouped.events,
-            mediaFiles: eventsGrouped.mediaFiles
-        };
-
-        this.emit('newMessage', eventsGroupedResult);
-
-        this.eventsGrouped.delete(groupedId);
     }
 
     async _onNewMessage(event: NewMessageEvent) {
