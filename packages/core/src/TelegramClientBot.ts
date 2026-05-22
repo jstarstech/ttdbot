@@ -65,6 +65,55 @@ export default class TelegramClientBot extends EventEmitter {
         });
     }
 
+    private scheduleGroupedMessageProcessing(groupedId: number, groupedEvents: eventsGrouped): void {
+        void this.processGroupedMessage(groupedId, groupedEvents);
+    }
+
+    private async processGroupedMessage(groupedId: number, groupedEvents: eventsGrouped): Promise<void> {
+        try {
+            await setTimeout(5000, null, { signal: groupedEvents.ac.signal });
+        } catch {
+            this.logger.debug('New grouped event received', { groupedId });
+            return;
+        }
+
+        const currentGroupedEvents = this.eventsGrouped.get(groupedId);
+
+        if (currentGroupedEvents !== groupedEvents) {
+            return;
+        }
+
+        if (groupedEvents.events.length === 0) {
+            this.eventsGrouped.delete(groupedId);
+            return;
+        }
+
+        const nextGroupedEvents: eventsGrouped = {
+            events: [],
+            mediaFiles: [],
+            ac: new AbortController()
+        };
+
+        this.eventsGrouped.set(groupedId, nextGroupedEvents);
+        this.scheduleGroupedMessageProcessing(groupedId, nextGroupedEvents);
+
+        try {
+            // All events are collected, now process them.
+            for (const _event of groupedEvents.events) {
+                await this.downloadMedia(_event, groupedEvents);
+            }
+
+            const eventsGroupedResult: eventsGroupedResult = {
+                events: groupedEvents.events,
+                mediaFiles: groupedEvents.mediaFiles
+            };
+
+            this.emit('newMessage', eventsGroupedResult);
+        } catch (error) {
+            this.logger.error(`Failed to process grouped message ${groupedId}`, { error });
+        }
+    }
+
     init() {
         this.client.setLogLevel(<LogLevel>'error');
 
@@ -147,49 +196,26 @@ export default class TelegramClientBot extends EventEmitter {
         const ac = new AbortController();
 
         if (!this.eventsGrouped.has(groupedId)) {
-            this.eventsGrouped.set(groupedId, {
+            const groupedEvents: eventsGrouped = {
                 events: [event],
                 mediaFiles: [],
                 ac
-            });
+            };
+
+            this.eventsGrouped.set(groupedId, groupedEvents);
+            this.scheduleGroupedMessageProcessing(groupedId, groupedEvents);
         } else {
-            const eventsGrouped = this.eventsGrouped.get(groupedId) as eventsGrouped;
-            eventsGrouped.ac.abort();
+            const groupedEvents = this.eventsGrouped.get(groupedId) as eventsGrouped;
+            groupedEvents.ac.abort();
 
             if (msg.message !== undefined && msg.message !== '') {
                 // Add event with a message text first
-                eventsGrouped.events.unshift(event);
+                groupedEvents.events.unshift(event);
             } else {
-                eventsGrouped.events.push(event);
+                groupedEvents.events.push(event);
             }
-            eventsGrouped.ac = ac;
-        }
-
-        try {
-            await setTimeout(5000, null, { signal: ac.signal });
-        } catch {
-            this.logger.debug('New grouped event received', { groupedId: groupedId });
-            return;
-        }
-
-        const groupedEvents = this.eventsGrouped.get(groupedId) as eventsGrouped;
-
-        try {
-            // All events are collected, now process them.
-            for (const _event of groupedEvents.events) {
-                await this.downloadMedia(_event, groupedEvents);
-            }
-
-            const eventsGroupedResult: eventsGroupedResult = {
-                events: groupedEvents.events,
-                mediaFiles: groupedEvents.mediaFiles
-            };
-
-            this.emit('newMessage', eventsGroupedResult);
-        } catch (error) {
-            this.logger.error(`Failed to process grouped message ${groupedId}`, { error });
-        } finally {
-            this.eventsGrouped.delete(groupedId);
+            groupedEvents.ac = ac;
+            this.scheduleGroupedMessageProcessing(groupedId, groupedEvents);
         }
     }
 
