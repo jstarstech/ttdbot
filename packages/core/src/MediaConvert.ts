@@ -82,7 +82,7 @@ export default class MediaConvert {
 
         const basename: string = Path.parse(this.src).name;
         const extension = 'mp4';
-        const totalDuration = await this.getDuration(this.src);
+        const totalDuration = await MediaConvert.getDuration(this.src);
         let i = 1;
         let currentDuration = 0;
 
@@ -93,7 +93,7 @@ export default class MediaConvert {
 
             await this.splitVideoPart(this.src, currentDuration, nextFileName);
 
-            const partDuration: number = await this.getDuration(nextFileName);
+            const partDuration: number = await MediaConvert.getDuration(nextFileName);
 
             this.logger.debug(`Duration of ${nextFileName}: ${partDuration}`);
             this.logger.debug(`Part No. ${i} starts at ${currentDuration}`);
@@ -136,7 +136,7 @@ export default class MediaConvert {
         });
     }
 
-    async getDuration(file: string): Promise<number> {
+    static async getDuration(file: string): Promise<number> {
         // prettier-ignore
         const ffprobeCmd = shell([
             pathToFfprobe,

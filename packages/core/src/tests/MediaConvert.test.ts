@@ -49,7 +49,7 @@ describe('MediaConvert', () => {
 
     // @TODO Enable these tests after adding source.mp4 file
     /*     test('should get video duration', async () => {
-        const duration = await mediaConvert.getDuration('source.mp4');
+        const duration = await MediaConvert.getDuration('source.mp4');
         expect(duration).toBe(60);
         expect(exec).toHaveBeenCalled();
     });

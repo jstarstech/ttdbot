@@ -10,7 +10,7 @@
     "start:ts": "node --import=tsx ./src/main.ts",
     "dev": "nodemon --config nodemon.json src/main.ts",
     "dev:debug": "nodemon --config nodemon.json --inspect-brk src/main.ts",
-    "lint": "eslint src/**/*.ts",
+    "lint": "eslint src --no-warn-ignored",
     "clean": "rimraf dist/",
     "test": "vitest"
   },
@@ -29,6 +29,7 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/ffprobe-static": "^2.0.3",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
@@ -36,12 +37,13 @@
     "@types/prompts": "^2.4.9",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
-    "eslint": "^9.39.1",
+    "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "nodemon": "^3.1.11",
     "prettier": "^3.8.3",
     "rimraf": "^6.1.2",
+    "typescript-eslint": "^8.59.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "vitest": "^4.1.7"

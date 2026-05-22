@@ -51,7 +51,7 @@ export default class DiscordClient {
     }
 
     async init(): Promise<void> {
-        const { promise, resolve, reject } = Promise.withResolvers<void>();
+        const { promise, resolve } = Promise.withResolvers<void>();
 
         this.discordClient.once('clientReady', () => {
             this.logger.info('Running Discord.js client');
