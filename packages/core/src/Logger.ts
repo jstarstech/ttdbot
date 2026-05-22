@@ -1,5 +1,5 @@
 import winston from 'winston';
-import config from './Config.js';
+import type { Config } from './Config.js';
 
 const logger = winston.createLogger({
     level: 'info',
@@ -25,29 +25,37 @@ const logger = winston.createLogger({
     ]
 });
 
-// Validate log level
-if (!config.logLevel || !Object.keys(logger.levels).includes(config.logLevel)) {
-    logger.error(`The "logLevel" not set or not in list: ${Object.keys(logger.levels).join(', ')}`);
+let fileTransportAdded = false;
 
-    process.exit(1);
+export function configureLogger(config: Config): void {
+    // Validate log level
+    if (!config.logLevel || !Object.keys(logger.levels).includes(config.logLevel)) {
+        throw new Error(`The "logLevel" not set or not in list: ${Object.keys(logger.levels).join(', ')}`);
+    }
+
+    logger.level = config.logLevel;
+
+    if (fileTransportAdded) {
+        return;
+    }
+
+    logger.add(
+        new winston.transports.File({
+            filename: config.dataDir + '/logs/error.log',
+            level: 'error',
+            format: winston.format.combine(
+                winston.format.timestamp({
+                    format: 'YYYY-MM-DD HH:mm:ss'
+                }),
+                winston.format.errors({ stack: true }),
+                winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp'] }),
+                winston.format.json(),
+                winston.format.prettyPrint()
+            )
+        })
+    );
+
+    fileTransportAdded = true;
 }
-
-logger.level = config.logLevel;
-
-logger.add(
-    new winston.transports.File({
-        filename: config.dataDir + '/logs/error.log',
-        level: 'error',
-        format: winston.format.combine(
-            winston.format.timestamp({
-                format: 'YYYY-MM-DD HH:mm:ss'
-            }),
-            winston.format.errors({ stack: true }),
-            winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp'] }),
-            winston.format.json(),
-            winston.format.prettyPrint()
-        )
-    })
-);
 
 export default logger;
