@@ -1,5 +1,5 @@
 import { AttachmentBuilder } from 'discord.js';
-import { NewMessageEvent } from 'telegram/events';
+import { NewMessageEvent } from 'telegram/events/index.js';
 
 export interface eventsGrouped {
     events: NewMessageEvent[];
