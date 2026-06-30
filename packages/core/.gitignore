@@ -10,3 +10,6 @@ data/
 
 # Built files
 dist/
+
+# Test coverage
+coverage/
