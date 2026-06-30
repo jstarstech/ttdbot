@@ -26,6 +26,17 @@ export interface Config {
     user_client?: { enabled?: boolean };
     /** Enables and configures the grammY Bot API source. */
     bot?: BotConfig;
+    /**
+     * Per-source attribution overrides for the Discord embed, keyed by Telegram
+     * user/chat id. `name` replaces the embed title (empty/unset → no title);
+     * `url` replaces the link (unset → the name renders as plain text).
+     */
+    overrides?: Record<string, EmbedOverride>;
+}
+
+export interface EmbedOverride {
+    name?: string;
+    url?: string;
 }
 
 export interface BotConfig {

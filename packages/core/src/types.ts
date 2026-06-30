@@ -23,4 +23,6 @@ export interface ForwardPayload {
     text: string;
     /** Local media file paths or pre-built Discord attachments. */
     mediaFiles: (string | AttachmentBuilder)[];
+    /** Originating Telegram user/chat id — used to look up an attribution override. */
+    sourceId?: number;
 }

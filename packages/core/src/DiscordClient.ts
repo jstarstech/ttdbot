@@ -181,7 +181,20 @@ export default class DiscordClient {
         let embeds = embedsChunks[embedsChunks.push([]) - 1];
         let files = filesChunks[filesChunks.push([]) - 1];
 
-        embeds.push({ color, title: payload.title, url, description: payload.text });
+        // Resolve the attribution shown at the top of the message. A per-source override
+        // (by Telegram id) can replace the name and link; otherwise use the source defaults.
+        const override = payload.sourceId !== undefined ? this.config.overrides?.[payload.sourceId] : undefined;
+        const attribName = override ? (override.name ?? '') : payload.title;
+        const attribUrl = override ? (override.url ?? '') : url;
+
+        const firstEmbed: APIEmbed = { color, description: payload.text };
+        if (attribName) {
+            firstEmbed.title = attribName;
+            if (attribUrl) {
+                firstEmbed.url = attribUrl; // hyperlinked name; omit url -> plain-text name
+            }
+        }
+        embeds.push(firstEmbed);
 
         const chunkSize = 4;
         for (let i = 0; i < mediaFiles.length; i += chunkSize) {

@@ -222,4 +222,35 @@ describe('DiscordClient.buildChunks', () => {
 
         expect(chunks.embedsChunks[0][0].url).toBe('https://example.org/');
     });
+
+    const withOverride = (override: { name?: string; url?: string }) =>
+        new DiscordClient({ ...mockConfig, overrides: { '389': override } } as Config, mockLogger);
+
+    test('applies a sender override: custom name + url (hyperlink)', async () => {
+        const c = withOverride({ name: 'Maks', url: 'https://discord.com/users/1' });
+
+        const embed = (await c.buildChunks(payload([], { sourceId: 389 }))).embedsChunks[0][0];
+
+        expect(embed.title).toBe('Maks');
+        expect(embed.url).toBe('https://discord.com/users/1');
+    });
+
+    test('sender override with name only renders plain text (no link)', async () => {
+        const c = withOverride({ name: 'Maks' });
+
+        const embed = (await c.buildChunks(payload([], { sourceId: 389 }))).embedsChunks[0][0];
+
+        expect(embed.title).toBe('Maks');
+        expect(embed.url).toBeUndefined();
+    });
+
+    test('sender override with empty name omits the title entirely', async () => {
+        const c = withOverride({ name: '' });
+
+        const embed = (await c.buildChunks(payload([], { sourceId: 389 }))).embedsChunks[0][0];
+
+        expect(embed.title).toBeUndefined();
+        expect(embed.url).toBeUndefined();
+        expect(embed.description).toBe('hello world');
+    });
 });

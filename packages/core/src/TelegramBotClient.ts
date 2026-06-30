@@ -35,7 +35,7 @@ function toForwardPayload(ctx: Context, mediaFiles: string[]): ForwardPayload {
     const username = chat?.username;
     const url = username ? `https://t.me/${username}/${msg.message_id}` : 'https://example.org/';
 
-    return { title, url, text: msg.caption ?? msg.text ?? '', mediaFiles };
+    return { title, url, text: msg.caption ?? msg.text ?? '', mediaFiles, sourceId: ctx.from?.id ?? ctx.chat?.id };
 }
 
 /**

@@ -67,7 +67,8 @@ describe('TelegramBotClient allowlist', () => {
             title: 'Max',
             url: 'https://example.org/',
             text: 'hello',
-            mediaFiles: []
+            mediaFiles: [],
+            sourceId: 111
         });
     });
 
@@ -85,7 +86,8 @@ describe('TelegramBotClient allowlist', () => {
             title: 'My Channel',
             url: 'https://t.me/mychan/9',
             text: 'news',
-            mediaFiles: []
+            mediaFiles: [],
+            sourceId: -100222
         });
     });
 

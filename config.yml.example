@@ -49,3 +49,12 @@ bot:
   allowed_user_ids: []
   # Deny by default. Chat IDs of channels the bot reads as admin.
   allowed_chat_ids: []
+
+# Optional per-source attribution overrides for the Discord embed, keyed by Telegram
+# user/chat id. Lets you replace the default channel name + t.me link.
+#   name: embed title. Empty "" or omitted -> no title is printed.
+#   url:  link for the name. Omitted -> the name shows as plain text (not a link).
+# overrides:
+#   389599694:
+#     name: "My Name"
+#     url: "https://discord.com/users/<your-discord-id>"

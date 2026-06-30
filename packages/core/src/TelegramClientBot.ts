@@ -40,7 +40,8 @@ async function buildForwardPayload(eventsGroupedResult: eventsGroupedResult): Pr
         title: sender.title,
         url,
         text: first.message.message,
-        mediaFiles: eventsGroupedResult.mediaFiles
+        mediaFiles: eventsGroupedResult.mediaFiles,
+        sourceId: sender.id?.toJSNumber()
     };
 }
 
