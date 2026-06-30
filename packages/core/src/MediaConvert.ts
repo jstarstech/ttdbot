@@ -128,20 +128,27 @@ export default class MediaConvert {
                 stdio: ['ignore', 'ignore', 'pipe']
             });
 
-            child.once('error', reject);
-            child.once('close', code => {
-                if (code === 0) {
-                    resolve(true);
-                } else {
-                    reject(new Error(`ffmpeg exited with code ${code ?? 'null'}`));
-                }
+            let stderrTail = '';
+            const maxStderr = 4000;
+
+            child.stderr.on('data', (chunk: Buffer) => {
+                stderrTail = (stderrTail + chunk.toString()).slice(-maxStderr);
             });
 
-            child.stderr.resume();
+            child.once('error', reject);
+            child.once('close', (code, signal) => {
+                if (code === 0) {
+                    resolve(true);
+                    return;
+                }
+
+                const reason = signal ? `signal ${signal}` : `code ${code ?? 'null'}`;
+                reject(new Error(`ffmpeg exited with ${reason}${stderrTail ? `: ${stderrTail.trim()}` : ''}`));
+            });
         });
     }
 
-    static async getDuration(file: string): Promise<number> {
+    private static async probe(file: string): Promise<ProbeResult> {
         // prettier-ignore
         const ffprobeCmd = shell([
             pathToFfprobe,
@@ -162,22 +169,17 @@ export default class MediaConvert {
             });
         });
 
-        let json: { streams?: { duration?: string }[]; format?: { duration?: string } };
-
         try {
-            json = JSON.parse(resultJson);
+            return JSON.parse(resultJson) as ProbeResult;
         } catch (error) {
-            if (error instanceof Error) {
-                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${error.message}`, {
-                    cause: error
-                });
-            } else {
-                throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${String(error)}`, {
-                    cause: error
-                });
-            }
-        }
+            const reason = error instanceof Error ? error.message : String(error);
 
+            throw new Error(`Error parsing JSON from ffprobe output for file ${file}: ${reason}`, { cause: error });
+        }
+    }
+
+    static async getDuration(file: string): Promise<number> {
+        const json = await MediaConvert.probe(file);
         const duration = json.streams?.[0]?.duration ?? json.format?.duration;
 
         if (duration === undefined || isNaN(Number(duration))) {
@@ -186,4 +188,15 @@ export default class MediaConvert {
 
         return Number(duration);
     }
+
+    static async getCodec(file: string): Promise<string | undefined> {
+        const json = await MediaConvert.probe(file);
+
+        return json.streams?.find(stream => stream.codec_type === 'video')?.codec_name;
+    }
+}
+
+interface ProbeResult {
+    streams?: { codec_name?: string; codec_type?: string; duration?: string }[];
+    format?: { duration?: string };
 }

@@ -169,30 +169,49 @@ export default class DiscordClient {
                     }
 
                     if (mediaFile.endsWith('.mp4')) {
-                        const fStat = fs.statSync(mediaFile);
-                        let fSize = fStat.size / (1024 * 1024);
-                        fSize = parseFloat(fSize.toFixed(2));
+                        try {
+                            let videoFile = mediaFile;
+                            let fSize = parseFloat((fs.statSync(mediaFile).size / (1024 * 1024)).toFixed(2));
 
-                        if (fSize <= 8.0) {
-                            const attachment = new AttachmentBuilder(fs.createReadStream(mediaFile), {
-                                name: path.basename(mediaFile)
-                            });
+                            // Discord cannot preview H.265/HEVC, so transcode small files to H.264.
+                            // Oversized files are re-encoded to H.264 by splitBySize() below regardless.
+                            const codec = await MediaConvert.getCodec(mediaFile);
 
-                            files.push(attachment);
-                        } else {
-                            const mediaConvert = new MediaConvert(this.config, this.logger);
+                            if (codec === 'hevc' && fSize <= 8.0) {
+                                videoFile = `${this.config.dataDir}/convert/${path.parse(mediaFile).name}-h264.mp4`;
 
-                            const fileParts: string[] = await mediaConvert.setSrc(mediaFile).splitBySize();
+                                await new MediaConvert(this.config, this.logger)
+                                    .setSrc(mediaFile)
+                                    .setDst(videoFile)
+                                    .convert();
+                                filePartsToRemove.push(videoFile);
 
-                            for (const file of fileParts) {
-                                const attachment = new AttachmentBuilder(fs.createReadStream(file), {
-                                    name: path.basename(file)
-                                });
-
-                                files.push(attachment);
+                                fSize = parseFloat((fs.statSync(videoFile).size / (1024 * 1024)).toFixed(2));
                             }
 
-                            filePartsToRemove.push(...fileParts);
+                            if (fSize <= 8.0) {
+                                files.push(
+                                    new AttachmentBuilder(fs.createReadStream(videoFile), {
+                                        name: path.basename(videoFile)
+                                    })
+                                );
+                            } else {
+                                const fileParts: string[] = await new MediaConvert(this.config, this.logger)
+                                    .setSrc(videoFile)
+                                    .splitBySize();
+
+                                for (const file of fileParts) {
+                                    files.push(
+                                        new AttachmentBuilder(fs.createReadStream(file), {
+                                            name: path.basename(file)
+                                        })
+                                    );
+                                }
+
+                                filePartsToRemove.push(...fileParts);
+                            }
+                        } catch (error) {
+                            this.logger.error(`Failed to process video ${mediaFile}`, { error });
                         }
 
                         continue;

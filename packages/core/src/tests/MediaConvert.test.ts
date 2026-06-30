@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, beforeEach, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import MediaConvert from '../MediaConvert';
 import { Config } from '../Config.js';
 import winston from 'winston';
@@ -84,6 +85,42 @@ describe('MediaConvert', () => {
 
         await expect(MediaConvert.getDuration('source.mp4')).resolves.toBe(12.5);
         expect(exec).toHaveBeenCalled();
+    });
+
+    test('should report the video stream codec', async () => {
+        const exec = (await import('node:child_process')).exec as unknown as ReturnType<typeof vi.fn>;
+
+        exec.mockImplementation((command, callback) => {
+            callback(
+                null,
+                JSON.stringify({
+                    streams: [
+                        { codec_type: 'audio', codec_name: 'aac' },
+                        { codec_type: 'video', codec_name: 'hevc' }
+                    ]
+                }),
+                ''
+            );
+            return {} as never;
+        });
+
+        await expect(MediaConvert.getCodec('source.mp4')).resolves.toBe('hevc');
+    });
+
+    test('should reject with the exit signal and stderr tail when ffmpeg crashes', async () => {
+        const spawn = (await import('node:child_process')).spawn as unknown as ReturnType<typeof vi.fn>;
+
+        const child = new EventEmitter() as EventEmitter & { stderr: EventEmitter };
+        child.stderr = new EventEmitter();
+        spawn.mockReturnValue(child as never);
+
+        mediaConvert.setSrc('source.mp4').setDst('destination.mp4');
+        const promise = mediaConvert.convert();
+
+        child.stderr.emit('data', Buffer.from('Segmentation fault'));
+        child.emit('close', null, 'SIGSEGV');
+
+        await expect(promise).rejects.toThrow(/signal SIGSEGV.*Segmentation fault/s);
     });
 
     // @TODO Enable these tests after adding source.mp4 file
