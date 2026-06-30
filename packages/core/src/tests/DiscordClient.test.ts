@@ -46,4 +46,8 @@ describe('DiscordClient', () => {
         expect(client.toggleColor()).toBe(blue);
         expect(client.toggleColor()).toBe(yellow);
     });
+
+    test('routes sends through a throttle that returns the callback result', async () => {
+        await expect(client['sendThrottle'](() => 'sent')).resolves.toBe('sent');
+    });
 });

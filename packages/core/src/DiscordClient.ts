@@ -2,11 +2,17 @@ import { APIEmbed, AttachmentBuilder, ChannelType, Client, GatewayIntentBits, Te
 import fs from 'fs-extra';
 import path from 'node:path';
 import { Api } from 'telegram';
+import { throttledQueue } from 'throttled-queue';
 import winston from 'winston';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
 import MediaConvert from './MediaConvert.js';
 import { eventsGrouped, eventsGroupedResult } from './types.js';
+
+// Discord permits roughly 5 message sends per 5 seconds per channel. Throttle
+// proactively so bursts (large albums, several source channels) don't trip the limit.
+const SEND_MAX_PER_INTERVAL = 5;
+const SEND_INTERVAL_MS = 5000;
 
 const getCircularReplacer = () => {
     const seen = new WeakSet();
@@ -35,6 +41,7 @@ export default class DiscordClient {
     private colors: number[] = [HexColorToNumber('#0057b8'), HexColorToNumber('#ffd700')];
     private lastColor: number;
     private readonly logger: winston.Logger;
+    private readonly sendThrottle: ReturnType<typeof throttledQueue>;
 
     constructor(config: Config, logger: winston.Logger | null = null) {
         this.config = config;
@@ -42,6 +49,12 @@ export default class DiscordClient {
         this.logger = logger || _logger;
 
         this.eventsGrouped = new Map<number, eventsGrouped>();
+
+        this.sendThrottle = throttledQueue({
+            maxPerInterval: SEND_MAX_PER_INTERVAL,
+            interval: SEND_INTERVAL_MS,
+            evenlySpaced: true
+        });
 
         this.discordClient = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -238,9 +251,11 @@ export default class DiscordClient {
                 }
             }
 
+            const targetChannel = channel;
+
             for (const [i, embeds] of embedsChunks.entries()) {
                 try {
-                    await channel.send({ embeds, files: filesChunks[i] });
+                    await this.sendThrottle(() => targetChannel.send({ embeds, files: filesChunks[i] }));
                 } catch (error) {
                     this.logger.error(`Failed to send message chunk ${i}`, { error });
                 }
