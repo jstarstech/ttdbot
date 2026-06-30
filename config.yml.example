@@ -27,3 +27,25 @@ output_channel_ids: []
 # The Discord channel id to forward messages to.
 discord_channel:
   - "0"
+
+# --- Ingest sources -------------------------------------------------------------
+# The bot forwards from one or more Telegram sources. Both can run at once.
+
+# User-account source (gramjs/MTProto, above). Auto-reads subscribed channels.
+# Enabled by default; set enabled: false to turn it off.
+user_client:
+  enabled: true
+
+# Bot API source (grammY). Receives content sent/forwarded to your bot (DM) and
+# posts from channels where the bot is an admin. Disabled by default.
+bot:
+  enabled: false
+  # Bot token from @BotFather.
+  token: ""
+  # Bot API endpoint. Empty = Telegram cloud (20 MB media limit);
+  # a self-hosted telegram-bot-api URL raises the limit to 2 GB.
+  api_server: ""
+  # Deny by default. User IDs allowed to submit via DM.
+  allowed_user_ids: []
+  # Deny by default. Chat IDs of channels the bot reads as admin.
+  allowed_chat_ids: []

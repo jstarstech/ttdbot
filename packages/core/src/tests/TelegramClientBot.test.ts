@@ -30,6 +30,13 @@ const mockLogger = {
     log: vi.fn()
 } as unknown as winston.Logger;
 
+// Drain pending microtasks (dispatch awaits getSender → media write → listeners → cleanup).
+const flush = async (n = 6): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+        await Promise.resolve();
+    }
+};
+
 describe('TelegramClientBot', () => {
     let telegramClientBot: TelegramClientBot;
 
@@ -87,13 +94,15 @@ describe('TelegramClientBot', () => {
         const secondDownload = new Promise<void>(resolve => {
             secondDownloadResolve = resolve;
         });
+        const sender = { title: 'Test', username: null };
         const event1 = {
             message: {
                 groupedId: {
                     toJSNumber: () => groupedId
                 },
                 message: 'first',
-                id: 1
+                id: 1,
+                getSender: vi.fn().mockResolvedValue(sender)
             }
         };
         const event2 = {
@@ -102,7 +111,8 @@ describe('TelegramClientBot', () => {
                     toJSNumber: () => groupedId
                 },
                 message: 'second',
-                id: 2
+                id: 2,
+                getSender: vi.fn().mockResolvedValue(sender)
             }
         };
 
@@ -122,19 +132,17 @@ describe('TelegramClientBot', () => {
         await Promise.resolve();
 
         firstDownloadResolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        await flush();
 
         expect(telegramClientBot['eventsGrouped'].has(groupedId)).toBe(true);
         expect(downloadMediaSpy).toHaveBeenCalledTimes(1);
         expect(onNewMessage).toHaveBeenCalledTimes(1);
 
         secondDownloadResolve();
-        await Promise.resolve();
+        await flush();
 
         await vi.advanceTimersByTimeAsync(5000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await flush();
 
         expect(downloadMediaSpy).toHaveBeenCalledTimes(2);
         expect(onNewMessage).toHaveBeenCalledTimes(2);
@@ -237,7 +245,7 @@ describe('TelegramClientBot media cleanup', () => {
         });
 
         await (bot as any).dispatchNewMessage({
-            events: [],
+            events: [{ message: { id: 1, message: '', getSender: async () => ({ title: 'T', username: null }) } }],
             mediaFiles: ['/data/telegram_media/a.jpeg', '/data/telegram_media/b.mp4']
         });
 

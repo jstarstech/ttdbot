@@ -1,5 +1,3 @@
-import { EventEmitter } from 'node:events';
-import fs from 'node:fs/promises';
 import prompts from 'prompts';
 import { Api, TelegramClient } from 'telegram';
 import { DownloadMediaInterface } from 'telegram/client/downloads.js';
@@ -9,24 +7,8 @@ import { StringSession } from 'telegram/sessions/index.js';
 import winston from 'winston';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
-import { eventsGrouped, eventsGroupedResult } from './types.js';
-
-function NumberMx(n: number) {
-    // prettier-ignore
-    const chars = [
-		'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',	'G', 'H',
-		'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-	];
-
-    let res = '';
-
-    for (let i = 0; i < n; i++) {
-        const id = Math.ceil(Math.random() * 35);
-        res += chars[id];
-    }
-
-    return res;
-}
+import TelegramSource from './TelegramSource.js';
+import { eventsGrouped, eventsGroupedResult, ForwardPayload } from './types.js';
 
 class CustomLogger extends Logger {
     private readonly logger: winston.Logger;
@@ -41,19 +23,35 @@ class CustomLogger extends Logger {
     }
 }
 
-export default class TelegramClientBot extends EventEmitter {
-    private config: Config;
+/**
+ * Normalizes grouped gramjs events into a source-agnostic ForwardPayload
+ * (channel title, t.me url, caption text, downloaded media).
+ */
+async function buildForwardPayload(eventsGroupedResult: eventsGroupedResult): Promise<ForwardPayload> {
+    const first = eventsGroupedResult.events[0];
+    const sender = (await first.message.getSender()) as Api.Channel;
+    let url = 'https://example.org/';
+
+    if (sender.username !== null) {
+        url = `https://t.me/${sender.username}/${first.message.id}`;
+    }
+
+    return {
+        title: sender.title,
+        url,
+        text: first.message.message,
+        mediaFiles: eventsGroupedResult.mediaFiles
+    };
+}
+
+export default class TelegramClientBot extends TelegramSource {
     private readonly stringSession: StringSession;
     private client: TelegramClient;
     private eventsGrouped: Map<number, eventsGrouped>;
-    private readonly logger: winston.Logger;
 
     constructor(config: Config, logger: winston.Logger | null = null) {
-        super();
+        super(config, logger || _logger);
 
-        this.logger = logger || _logger;
-
-        this.config = config;
         this.eventsGrouped = new Map<number, eventsGrouped>();
 
         this.stringSession = new StringSession(this.config.session_name);
@@ -160,29 +158,11 @@ export default class TelegramClientBot extends EventEmitter {
         }
 
         if (event.message.photo) {
-            const fileName = NumberMx(35);
-            const file = this.config.dataDir + `/telegram_media/${fileName}.jpeg`;
-
-            if (Buffer.isBuffer(buffer)) {
-                await fs.writeFile(file, new Uint8Array(buffer));
-            } else {
-                await fs.writeFile(file, buffer);
-            }
-
-            eventsGrouped.mediaFiles.push(file);
+            eventsGrouped.mediaFiles.push(await this.saveMediaFile('jpeg', buffer));
         }
 
         if (event.message.video) {
-            const fileName = NumberMx(35);
-            const file = this.config.dataDir + `/telegram_media/${fileName}.mp4`;
-
-            if (Buffer.isBuffer(buffer)) {
-                await fs.writeFile(file, new Uint8Array(buffer));
-            } else {
-                await fs.writeFile(file, buffer);
-            }
-
-            eventsGrouped.mediaFiles.push(file);
+            eventsGrouped.mediaFiles.push(await this.saveMediaFile('mp4', buffer));
         }
     }
 
@@ -245,30 +225,8 @@ export default class TelegramClientBot extends EventEmitter {
         await this.dispatchNewMessage(eventsGroupedResult);
     }
 
-    /**
-     * Notifies all `newMessage` listeners and waits for them to finish before
-     * removing the downloaded media, so files are not deleted while a listener
-     * is still reading them.
-     */
+    /** Normalizes the grouped events and dispatches to listeners (then cleans up media). */
     private async dispatchNewMessage(eventsGroupedResult: eventsGroupedResult): Promise<void> {
-        const listeners = this.listeners('newMessage') as ((result: eventsGroupedResult) => unknown)[];
-
-        await Promise.allSettled(listeners.map(listener => listener(eventsGroupedResult)));
-
-        await this.removeMediaFiles(eventsGroupedResult.mediaFiles);
-    }
-
-    private async removeMediaFiles(mediaFiles: eventsGroupedResult['mediaFiles']): Promise<void> {
-        for (const mediaFile of mediaFiles) {
-            if (typeof mediaFile !== 'string') {
-                continue;
-            }
-
-            try {
-                await fs.rm(mediaFile, { force: true });
-            } catch (error) {
-                this.logger.error(`Failed to remove media file ${mediaFile}`, { error });
-            }
-        }
+        await this.dispatch(await buildForwardPayload(eventsGroupedResult));
     }
 }

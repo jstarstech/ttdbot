@@ -3,6 +3,7 @@ import { AttachmentBuilder } from 'discord.js';
 import fs from 'fs-extra';
 import DiscordClient from '../DiscordClient';
 import { Config } from '../Config.js';
+import { ForwardPayload } from '../types.js';
 import winston from 'winston';
 
 const mocks = vi.hoisted(() => {
@@ -174,7 +175,7 @@ describe('DiscordClient.prepareVideo', () => {
     });
 });
 
-describe('DiscordClient.buildPayload', () => {
+describe('DiscordClient.buildChunks', () => {
     let client: DiscordClient;
 
     beforeEach(() => {
@@ -191,36 +192,34 @@ describe('DiscordClient.buildPayload', () => {
         client = new DiscordClient(mockConfig, mockLogger);
     });
 
-    const makeResult = (sender: unknown, mediaFiles: string[], message = 'hello world', id = 42) => ({
-        events: [{ message: { id, message, getSender: vi.fn().mockResolvedValue(sender) } }],
-        mediaFiles
+    const payload = (mediaFiles: string[], over: Partial<ForwardPayload> = {}): ForwardPayload => ({
+        title: 'My Channel',
+        url: 'https://t.me/mychan/42',
+        text: 'hello world',
+        mediaFiles,
+        ...over
     });
 
     test('builds embed and file chunks from a jpeg and an mp4', async () => {
-        const result = makeResult({ username: 'mychan', title: 'My Channel' }, [
-            '/data/telegram_media/a.jpeg',
-            '/data/telegram_media/b.mp4'
-        ]);
+        const chunks = await client.buildChunks(payload(['/data/telegram_media/a.jpeg', '/data/telegram_media/b.mp4']));
 
-        const payload = await client.buildPayload(result as never);
+        expect(chunks.embedsChunks).toHaveLength(1);
 
-        expect(payload.url).toBe('https://t.me/mychan/42');
-        expect(payload.embedsChunks).toHaveLength(1);
-
-        const [firstEmbed, jpegEmbed] = payload.embedsChunks[0];
+        const [firstEmbed, jpegEmbed] = chunks.embedsChunks[0];
         expect(firstEmbed.title).toBe('My Channel');
+        expect(firstEmbed.url).toBe('https://t.me/mychan/42');
         expect(firstEmbed.description).toBe('hello world');
         expect(jpegEmbed.image?.url).toBe('attachment://a.jpeg');
 
-        const chunk = payload.filesChunks[0];
+        const chunk = chunks.filesChunks[0];
         expect(chunk[0]).toBe('/data/telegram_media/a.jpeg');
         expect(chunk[1]).toBeInstanceOf(AttachmentBuilder);
         expect((chunk[1] as AttachmentBuilder).name).toBe('b.mp4');
     });
 
-    test('keeps the default url when the sender has no username', async () => {
-        const payload = await client.buildPayload(makeResult({ username: null, title: 'T' }, []) as never);
+    test('uses the payload url for the embed', async () => {
+        const chunks = await client.buildChunks(payload([], { url: 'https://example.org/' }));
 
-        expect(payload.url).toBe('https://example.org/');
+        expect(chunks.embedsChunks[0][0].url).toBe('https://example.org/');
     });
 });

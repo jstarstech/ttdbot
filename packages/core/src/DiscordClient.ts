@@ -1,13 +1,12 @@
 import { APIEmbed, AttachmentBuilder, ChannelType, Client, GatewayIntentBits, TextChannel } from 'discord.js';
 import fs from 'fs-extra';
 import path from 'node:path';
-import { Api } from 'telegram';
 import { throttledQueue } from 'throttled-queue';
 import winston from 'winston';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
 import MediaConvert from './MediaConvert.js';
-import { eventsGrouped, eventsGroupedResult } from './types.js';
+import { eventsGrouped, ForwardPayload } from './types.js';
 
 // Discord permits roughly 5 message sends per 5 seconds per channel. Throttle
 // proactively so bursts (large albums, several source channels) don't trip the limit.
@@ -17,21 +16,6 @@ const SEND_INTERVAL_MS = 5000;
 // Discord's non-Nitro upload limit is 10 MB. Attach files up to this size directly;
 // larger ones are split. Kept below 10 MB for multipart/embed overhead.
 const MAX_ATTACHMENT_MIB = 9;
-
-const getCircularReplacer = () => {
-    const seen = new WeakSet();
-
-    return (key: string, value: unknown) => {
-        if (typeof value === 'object' && value !== null) {
-            if (seen.has(value)) {
-                return;
-            }
-
-            seen.add(value);
-        }
-        return value;
-    };
-};
 
 function HexColorToNumber(hexColor: string): number {
     return Number(hexColor.replace('#', '0x'));
@@ -137,9 +121,8 @@ export default class DiscordClient {
         return this.lastColor;
     }
 
-    async postMessage(eventsGroupedResult: eventsGroupedResult): Promise<void> {
-        const events = eventsGroupedResult.events;
-        let url = 'https://example.org/';
+    async postMessage(payload: ForwardPayload): Promise<void> {
+        const url = payload.url;
         let filePartsToRemove: string[] = [];
 
         try {
@@ -151,22 +134,18 @@ export default class DiscordClient {
                 return;
             }
 
-            const payload = await this.buildPayload(eventsGroupedResult);
-            url = payload.url;
-            filePartsToRemove = payload.filePartsToRemove;
+            const chunks = await this.buildChunks(payload);
+            filePartsToRemove = chunks.filePartsToRemove;
 
-            for (const [i, embeds] of payload.embedsChunks.entries()) {
+            for (const [i, embeds] of chunks.embedsChunks.entries()) {
                 try {
-                    await this.sendThrottle(() => channel.send({ embeds, files: payload.filesChunks[i] }));
+                    await this.sendThrottle(() => channel.send({ embeds, files: chunks.filesChunks[i] }));
                 } catch (error) {
                     this.logger.error(`Failed to send message chunk ${i}`, { error });
                 }
             }
         } catch (e) {
-            this.logger.error(`Error forwarding message ${url}`, {
-                url: url,
-                events: JSON.parse(JSON.stringify(events, getCircularReplacer()))
-            });
+            this.logger.error(`Error forwarding message ${url}`, { url, title: payload.title });
             this.logger.error(e);
         }
 
@@ -183,18 +162,16 @@ export default class DiscordClient {
     }
 
     /**
-     * Builds the Discord embed/attachment chunks for a grouped message. Each
+     * Builds the Discord embed/attachment chunks for a forward payload. Each
      * embed chunk and its parallel file chunk are sent together by postMessage.
      */
-    async buildPayload(eventsGroupedResult: eventsGroupedResult): Promise<{
+    async buildChunks(payload: ForwardPayload): Promise<{
         embedsChunks: APIEmbed[][];
         filesChunks: (string | AttachmentBuilder)[][];
         filePartsToRemove: string[];
-        url: string;
     }> {
-        const events = eventsGroupedResult.events;
-        const mediaFiles = eventsGroupedResult.mediaFiles;
-        let url = 'https://example.org/';
+        const mediaFiles = payload.mediaFiles;
+        const url = payload.url;
         const filePartsToRemove: string[] = [];
 
         const color = this.toggleColor();
@@ -204,14 +181,7 @@ export default class DiscordClient {
         let embeds = embedsChunks[embedsChunks.push([]) - 1];
         let files = filesChunks[filesChunks.push([]) - 1];
 
-        const _sender = (await events[0].message.getSender()) as Api.Channel;
-        const _message = events[0].message.message;
-
-        if (_sender.username !== null) {
-            url = `https://t.me/${_sender.username}/${events[0].message.id}`;
-        }
-
-        embeds.push({ color, title: _sender.title, url, description: _message });
+        embeds.push({ color, title: payload.title, url, description: payload.text });
 
         const chunkSize = 4;
         for (let i = 0; i < mediaFiles.length; i += chunkSize) {
@@ -250,7 +220,7 @@ export default class DiscordClient {
             }
         }
 
-        return { embedsChunks, filesChunks, filePartsToRemove, url };
+        return { embedsChunks, filesChunks, filePartsToRemove };
     }
 
     /**

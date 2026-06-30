@@ -14,10 +14,10 @@ export default defineConfig({
             exclude: ['src/tests/**', 'src/types.ts', 'src/main.ts'],
             // Floors set just below current coverage; raise as coverage grows.
             thresholds: {
-                statements: 67,
-                branches: 55,
-                functions: 58,
-                lines: 67
+                statements: 70,
+                branches: 62,
+                functions: 62,
+                lines: 70
             }
         }
     }

@@ -38,6 +38,7 @@
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.1.0",
     "fs-extra": "^11.3.5",
+    "grammy": "^1.44.0",
     "js-yaml": "^4.1.1",
     "prompts": "^2.4.2",
     "telegram": "^2.26.22",
