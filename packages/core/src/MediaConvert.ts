@@ -13,6 +13,10 @@ if (pathToFfmpeg === null) {
     process.exit(1);
 }
 
+// Discord's non-Nitro upload limit is 10 MB. Cap each split part below that,
+// leaving headroom for multipart/embed overhead and ffmpeg's soft -fs overshoot.
+const MAX_PART_SIZE_BYTES = 9_000_000;
+
 export default class MediaConvert {
     private src = '';
     private dest = '';
@@ -109,7 +113,7 @@ export default class MediaConvert {
             '-y',
             '-i', resolve(process.cwd(), file),
             ...(curDuration > 0 ? ['-ss', curDuration.toString()] : []),
-            '-fs', '7920000',
+            '-fs', MAX_PART_SIZE_BYTES.toString(),
             '-c:v', 'libx264',
             '-preset', 'medium',
             '-crf', '31',

@@ -14,6 +14,10 @@ import { eventsGrouped, eventsGroupedResult } from './types.js';
 const SEND_MAX_PER_INTERVAL = 5;
 const SEND_INTERVAL_MS = 5000;
 
+// Discord's non-Nitro upload limit is 10 MB. Attach files up to this size directly;
+// larger ones are split. Kept below 10 MB for multipart/embed overhead.
+const MAX_ATTACHMENT_MIB = 9;
+
 const getCircularReplacer = () => {
     const seen = new WeakSet();
 
@@ -251,8 +255,8 @@ export default class DiscordClient {
 
     /**
      * Turns a single mp4 into Discord attachments: transcodes H.265/HEVC files
-     * to H.264 so Discord can preview them, and splits files over the 8 MiB
-     * upload limit. Returns the attachments plus any derived files to clean up.
+     * to H.264 so Discord can preview them, and splits files over the upload
+     * limit. Returns the attachments plus any derived files to clean up.
      */
     async prepareVideo(mediaFile: string): Promise<{ files: AttachmentBuilder[]; remove: string[] }> {
         const files: AttachmentBuilder[] = [];
@@ -266,7 +270,7 @@ export default class DiscordClient {
             // Oversized files are re-encoded to H.264 by splitBySize() below regardless.
             const codec = await MediaConvert.getCodec(mediaFile);
 
-            if (codec === 'hevc' && fSize <= 8.0) {
+            if (codec === 'hevc' && fSize <= MAX_ATTACHMENT_MIB) {
                 videoFile = `${this.config.dataDir}/convert/${path.parse(mediaFile).name}-h264.mp4`;
 
                 await new MediaConvert(this.config, this.logger).setSrc(mediaFile).setDst(videoFile).convert();
@@ -275,7 +279,7 @@ export default class DiscordClient {
                 fSize = parseFloat((fs.statSync(videoFile).size / (1024 * 1024)).toFixed(2));
             }
 
-            if (fSize <= 8.0) {
+            if (fSize <= MAX_ATTACHMENT_MIB) {
                 files.push(new AttachmentBuilder(fs.createReadStream(videoFile), { name: path.basename(videoFile) }));
             } else {
                 const fileParts: string[] = await new MediaConvert(this.config, this.logger)
