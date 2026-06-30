@@ -247,3 +247,66 @@ describe('TelegramClientBot media cleanup', () => {
         expect(rm).toHaveBeenCalledWith('/data/telegram_media/b.mp4', { force: true });
     });
 });
+
+describe('TelegramClientBot.downloadMedia', () => {
+    const writeFile = fs.writeFile as unknown as ReturnType<typeof vi.fn>;
+
+    function makeBot(client: unknown): TelegramClientBot {
+        const bot = Object.create(TelegramClientBot.prototype) as TelegramClientBot;
+        bot['config'] = mockConfig;
+        bot['logger'] = mockLogger;
+        bot['client'] = client as never;
+        return bot;
+    }
+
+    const newGrouped = () => ({ events: [], mediaFiles: [] as string[], timeout: null });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    test('writes a downloaded photo to telegram_media and records its path', async () => {
+        const bot = makeBot({ downloadMedia: vi.fn().mockResolvedValue(Buffer.from('img')) });
+        const grouped = newGrouped();
+
+        await (bot as any).downloadMedia({ message: { id: 1, photo: {} } }, grouped);
+
+        expect(writeFile).toHaveBeenCalledTimes(1);
+        const [writtenPath, data] = writeFile.mock.calls[0];
+        expect(writtenPath).toMatch(/^\/mock\/data\/dir\/telegram_media\/[0-9A-Z]{35}\.jpeg$/);
+        expect(data).toBeInstanceOf(Uint8Array);
+        expect(grouped.mediaFiles).toEqual([writtenPath]);
+    });
+
+    test('writes a downloaded video as an mp4', async () => {
+        const bot = makeBot({ downloadMedia: vi.fn().mockResolvedValue(Buffer.from('vid')) });
+        const grouped = newGrouped();
+
+        await (bot as any).downloadMedia({ message: { id: 2, video: {} } }, grouped);
+
+        const [writtenPath] = writeFile.mock.calls[0];
+        expect(writtenPath).toMatch(/^\/mock\/data\/dir\/telegram_media\/[0-9A-Z]{35}\.mp4$/);
+        expect(grouped.mediaFiles).toEqual([writtenPath]);
+    });
+
+    test('writes a non-Buffer payload as-is', async () => {
+        const bot = makeBot({ downloadMedia: vi.fn().mockResolvedValue('rawdata') });
+        const grouped = newGrouped();
+
+        await (bot as any).downloadMedia({ message: { id: 3, video: {} } }, grouped);
+
+        const [, data] = writeFile.mock.calls[0];
+        expect(data).toBe('rawdata');
+    });
+
+    test('logs and skips when no media could be downloaded', async () => {
+        const bot = makeBot({ downloadMedia: vi.fn().mockResolvedValue(undefined) });
+        const grouped = newGrouped();
+
+        await (bot as any).downloadMedia({ message: { id: 7, photo: {} } }, grouped);
+
+        expect(writeFile).not.toHaveBeenCalled();
+        expect(grouped.mediaFiles).toEqual([]);
+        expect(mockLogger.error).toHaveBeenCalledWith('Failed to download media', { messageId: 7 });
+    });
+});
