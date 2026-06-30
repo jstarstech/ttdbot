@@ -11,7 +11,14 @@ export default defineConfig({
             provider: 'v8',
             reporter: ['text', 'html'],
             include: ['src/**/*.ts'],
-            exclude: ['src/tests/**', 'src/types.ts', 'src/main.ts']
+            exclude: ['src/tests/**', 'src/types.ts', 'src/main.ts'],
+            // Floors set just below current coverage; raise as coverage grows.
+            thresholds: {
+                statements: 60,
+                branches: 48,
+                functions: 55,
+                lines: 60
+            }
         }
     }
 });

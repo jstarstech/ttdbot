@@ -134,14 +134,12 @@ export default class DiscordClient {
     }
 
     async postMessage(eventsGroupedResult: eventsGroupedResult): Promise<void> {
-        let channel: TextChannel | undefined;
         const events = eventsGroupedResult.events;
-        const mediaFiles = eventsGroupedResult.mediaFiles;
         let url = 'https://example.org/';
-        const filePartsToRemove: string[] = [];
+        let filePartsToRemove: string[] = [];
 
         try {
-            channel = await this.getChannel();
+            const channel = await this.getChannel();
 
             if (channel === undefined) {
                 this.logger.error('Cannot fetch the channel');
@@ -149,113 +147,13 @@ export default class DiscordClient {
                 return;
             }
 
-            const color = this.toggleColor();
-            const embedsChunks: APIEmbed[][] = [];
-            const filesChunks: (string | AttachmentBuilder)[][] = [];
+            const payload = await this.buildPayload(eventsGroupedResult);
+            url = payload.url;
+            filePartsToRemove = payload.filePartsToRemove;
 
-            let embeds = embedsChunks[embedsChunks.push([]) - 1];
-            let files = filesChunks[filesChunks.push([]) - 1];
-
-            const _sender = (await events[0].message.getSender()) as Api.Channel;
-            const _message = events[0].message.message;
-
-            if (_sender.username !== null) {
-                url = `https://t.me/${_sender.username}/${events[0].message.id}`;
-            }
-
-            const firstEmbed: APIEmbed = {
-                color,
-                title: _sender.title,
-                url,
-                description: _message
-            };
-
-            embeds.push(firstEmbed);
-
-            const chunkSize = 4;
-            for (let i = 0; i < mediaFiles.length; i += chunkSize) {
-                const chunk = mediaFiles.slice(i, i + chunkSize);
-
-                for (const mediaFile of chunk) {
-                    if (mediaFile instanceof AttachmentBuilder) {
-                        continue;
-                    }
-
-                    if (mediaFile.endsWith('.mp4')) {
-                        try {
-                            let videoFile = mediaFile;
-                            let fSize = parseFloat((fs.statSync(mediaFile).size / (1024 * 1024)).toFixed(2));
-
-                            // Discord cannot preview H.265/HEVC, so transcode small files to H.264.
-                            // Oversized files are re-encoded to H.264 by splitBySize() below regardless.
-                            const codec = await MediaConvert.getCodec(mediaFile);
-
-                            if (codec === 'hevc' && fSize <= 8.0) {
-                                videoFile = `${this.config.dataDir}/convert/${path.parse(mediaFile).name}-h264.mp4`;
-
-                                await new MediaConvert(this.config, this.logger)
-                                    .setSrc(mediaFile)
-                                    .setDst(videoFile)
-                                    .convert();
-                                filePartsToRemove.push(videoFile);
-
-                                fSize = parseFloat((fs.statSync(videoFile).size / (1024 * 1024)).toFixed(2));
-                            }
-
-                            if (fSize <= 8.0) {
-                                files.push(
-                                    new AttachmentBuilder(fs.createReadStream(videoFile), {
-                                        name: path.basename(videoFile)
-                                    })
-                                );
-                            } else {
-                                const fileParts: string[] = await new MediaConvert(this.config, this.logger)
-                                    .setSrc(videoFile)
-                                    .splitBySize();
-
-                                for (const file of fileParts) {
-                                    files.push(
-                                        new AttachmentBuilder(fs.createReadStream(file), {
-                                            name: path.basename(file)
-                                        })
-                                    );
-                                }
-
-                                filePartsToRemove.push(...fileParts);
-                            }
-                        } catch (error) {
-                            this.logger.error(`Failed to process video ${mediaFile}`, { error });
-                        }
-
-                        continue;
-                    }
-
-                    if (mediaFile.endsWith('.jpeg')) {
-                        if (embeds.length % 10 === 0) {
-                            embeds = embedsChunks[embedsChunks.push([]) - 1];
-                            files = filesChunks[filesChunks.push([]) - 1];
-                        }
-
-                        const exampleEmbed: APIEmbed = {
-                            color: color,
-                            url: url + '#' + (i === 0 ? '' : i),
-                            description: '',
-                            image: {
-                                url: `attachment://${path.basename(mediaFile)}`
-                            }
-                        };
-
-                        embeds.push(exampleEmbed);
-                        files.push(mediaFile);
-                    }
-                }
-            }
-
-            const targetChannel = channel;
-
-            for (const [i, embeds] of embedsChunks.entries()) {
+            for (const [i, embeds] of payload.embedsChunks.entries()) {
                 try {
-                    await this.sendThrottle(() => targetChannel.send({ embeds, files: filesChunks[i] }));
+                    await this.sendThrottle(() => channel.send({ embeds, files: payload.filesChunks[i] }));
                 } catch (error) {
                     this.logger.error(`Failed to send message chunk ${i}`, { error });
                 }
@@ -278,5 +176,122 @@ export default class DiscordClient {
         }
 
         this.logger.info(`Message forwarded ${url}`, { url: url });
+    }
+
+    /**
+     * Builds the Discord embed/attachment chunks for a grouped message. Each
+     * embed chunk and its parallel file chunk are sent together by postMessage.
+     */
+    async buildPayload(eventsGroupedResult: eventsGroupedResult): Promise<{
+        embedsChunks: APIEmbed[][];
+        filesChunks: (string | AttachmentBuilder)[][];
+        filePartsToRemove: string[];
+        url: string;
+    }> {
+        const events = eventsGroupedResult.events;
+        const mediaFiles = eventsGroupedResult.mediaFiles;
+        let url = 'https://example.org/';
+        const filePartsToRemove: string[] = [];
+
+        const color = this.toggleColor();
+        const embedsChunks: APIEmbed[][] = [];
+        const filesChunks: (string | AttachmentBuilder)[][] = [];
+
+        let embeds = embedsChunks[embedsChunks.push([]) - 1];
+        let files = filesChunks[filesChunks.push([]) - 1];
+
+        const _sender = (await events[0].message.getSender()) as Api.Channel;
+        const _message = events[0].message.message;
+
+        if (_sender.username !== null) {
+            url = `https://t.me/${_sender.username}/${events[0].message.id}`;
+        }
+
+        embeds.push({ color, title: _sender.title, url, description: _message });
+
+        const chunkSize = 4;
+        for (let i = 0; i < mediaFiles.length; i += chunkSize) {
+            const chunk = mediaFiles.slice(i, i + chunkSize);
+
+            for (const mediaFile of chunk) {
+                if (mediaFile instanceof AttachmentBuilder) {
+                    continue;
+                }
+
+                if (mediaFile.endsWith('.mp4')) {
+                    const { files: videoFiles, remove } = await this.prepareVideo(mediaFile);
+
+                    files.push(...videoFiles);
+                    filePartsToRemove.push(...remove);
+
+                    continue;
+                }
+
+                if (mediaFile.endsWith('.jpeg')) {
+                    if (embeds.length % 10 === 0) {
+                        embeds = embedsChunks[embedsChunks.push([]) - 1];
+                        files = filesChunks[filesChunks.push([]) - 1];
+                    }
+
+                    embeds.push({
+                        color,
+                        url: url + '#' + (i === 0 ? '' : i),
+                        description: '',
+                        image: {
+                            url: `attachment://${path.basename(mediaFile)}`
+                        }
+                    });
+                    files.push(mediaFile);
+                }
+            }
+        }
+
+        return { embedsChunks, filesChunks, filePartsToRemove, url };
+    }
+
+    /**
+     * Turns a single mp4 into Discord attachments: transcodes H.265/HEVC files
+     * to H.264 so Discord can preview them, and splits files over the 8 MiB
+     * upload limit. Returns the attachments plus any derived files to clean up.
+     */
+    async prepareVideo(mediaFile: string): Promise<{ files: AttachmentBuilder[]; remove: string[] }> {
+        const files: AttachmentBuilder[] = [];
+        const remove: string[] = [];
+
+        try {
+            let videoFile = mediaFile;
+            let fSize = parseFloat((fs.statSync(mediaFile).size / (1024 * 1024)).toFixed(2));
+
+            // Discord cannot preview H.265/HEVC, so transcode small files to H.264.
+            // Oversized files are re-encoded to H.264 by splitBySize() below regardless.
+            const codec = await MediaConvert.getCodec(mediaFile);
+
+            if (codec === 'hevc' && fSize <= 8.0) {
+                videoFile = `${this.config.dataDir}/convert/${path.parse(mediaFile).name}-h264.mp4`;
+
+                await new MediaConvert(this.config, this.logger).setSrc(mediaFile).setDst(videoFile).convert();
+                remove.push(videoFile);
+
+                fSize = parseFloat((fs.statSync(videoFile).size / (1024 * 1024)).toFixed(2));
+            }
+
+            if (fSize <= 8.0) {
+                files.push(new AttachmentBuilder(fs.createReadStream(videoFile), { name: path.basename(videoFile) }));
+            } else {
+                const fileParts: string[] = await new MediaConvert(this.config, this.logger)
+                    .setSrc(videoFile)
+                    .splitBySize();
+
+                for (const file of fileParts) {
+                    files.push(new AttachmentBuilder(fs.createReadStream(file), { name: path.basename(file) }));
+                }
+
+                remove.push(...fileParts);
+            }
+        } catch (error) {
+            this.logger.error(`Failed to process video ${mediaFile}`, { error });
+        }
+
+        return { files, remove };
     }
 }
