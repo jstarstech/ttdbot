@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Api } from 'telegram';
+import fs from 'node:fs/promises';
 import TelegramClientBot from '../TelegramClientBot';
 import { Config } from '../Config.js';
 import winston from 'winston';
+
+vi.mock('node:fs/promises', () => ({
+    default: { writeFile: vi.fn(), rm: vi.fn() }
+}));
 
 const mockConfig: Config = {
     dataDir: '/mock/data/dir',
@@ -55,14 +60,15 @@ describe('TelegramClientBot', () => {
         };
 
         vi.spyOn(telegramClientBot, 'downloadMedia').mockRejectedValue(new Error('boom'));
-        const emitSpy = vi.spyOn(telegramClientBot, 'emit');
+        const onNewMessage = vi.fn();
+        telegramClientBot.on('newMessage', onNewMessage);
 
         await (telegramClientBot as any)._NewMessageGrouped(event);
         await vi.advanceTimersByTimeAsync(5000);
         await Promise.resolve();
 
         expect(telegramClientBot['eventsGrouped'].has(groupedId)).toBe(true);
-        expect(emitSpy).not.toHaveBeenCalled();
+        expect(onNewMessage).not.toHaveBeenCalled();
         expect(mockLogger.error).toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(5000);
@@ -104,7 +110,8 @@ describe('TelegramClientBot', () => {
             .spyOn(telegramClientBot, 'downloadMedia')
             .mockImplementationOnce(async () => firstDownload)
             .mockImplementationOnce(async () => secondDownload);
-        const emitSpy = vi.spyOn(telegramClientBot, 'emit');
+        const onNewMessage = vi.fn();
+        telegramClientBot.on('newMessage', onNewMessage);
 
         await (telegramClientBot as any)._NewMessageGrouped(event1);
         await vi.advanceTimersByTimeAsync(5000);
@@ -120,7 +127,7 @@ describe('TelegramClientBot', () => {
 
         expect(telegramClientBot['eventsGrouped'].has(groupedId)).toBe(true);
         expect(downloadMediaSpy).toHaveBeenCalledTimes(1);
-        expect(emitSpy).toHaveBeenCalledTimes(1);
+        expect(onNewMessage).toHaveBeenCalledTimes(1);
 
         secondDownloadResolve();
         await Promise.resolve();
@@ -130,7 +137,7 @@ describe('TelegramClientBot', () => {
         await Promise.resolve();
 
         expect(downloadMediaSpy).toHaveBeenCalledTimes(2);
-        expect(emitSpy).toHaveBeenCalledTimes(2);
+        expect(onNewMessage).toHaveBeenCalledTimes(2);
         expect(telegramClientBot['eventsGrouped'].has(groupedId)).toBe(true);
 
         await vi.advanceTimersByTimeAsync(5000);
@@ -170,33 +177,73 @@ describe('TelegramClientBot._onNewMessage', () => {
     test('forwards a message from a listed channel', async () => {
         telegramClientBot = makeBot({ ...mockConfig, input_channel_ids: [555] });
         const downloadMedia = vi.spyOn(telegramClientBot, 'downloadMedia').mockResolvedValue(undefined);
-        const emit = vi.spyOn(telegramClientBot, 'emit');
+        const onNewMessage = vi.fn();
+        telegramClientBot.on('newMessage', onNewMessage);
 
         await telegramClientBot._onNewMessage(makeChannelEvent(555) as never);
 
         expect(downloadMedia).toHaveBeenCalledTimes(1);
-        expect(emit).toHaveBeenCalledWith('newMessage', expect.objectContaining({ mediaFiles: [] }));
+        expect(onNewMessage).toHaveBeenCalledWith(expect.objectContaining({ mediaFiles: [] }));
     });
 
     test('ignores a message from a channel that is not in the list', async () => {
         telegramClientBot = makeBot({ ...mockConfig, input_channel_ids: [555] });
         const downloadMedia = vi.spyOn(telegramClientBot, 'downloadMedia').mockResolvedValue(undefined);
-        const emit = vi.spyOn(telegramClientBot, 'emit');
+        const onNewMessage = vi.fn();
+        telegramClientBot.on('newMessage', onNewMessage);
 
         await telegramClientBot._onNewMessage(makeChannelEvent(999) as never);
 
         expect(downloadMedia).not.toHaveBeenCalled();
-        expect(emit).not.toHaveBeenCalled();
+        expect(onNewMessage).not.toHaveBeenCalled();
     });
 
     test('routes a grouped message to the grouped handler', async () => {
         telegramClientBot = makeBot({ ...mockConfig, input_channel_ids: [555] });
         const grouped = vi.spyOn(telegramClientBot, '_NewMessageGrouped').mockResolvedValue(undefined);
-        const emit = vi.spyOn(telegramClientBot, 'emit');
+        const onNewMessage = vi.fn();
+        telegramClientBot.on('newMessage', onNewMessage);
 
         await telegramClientBot._onNewMessage(makeChannelEvent(555, { toJSNumber: () => 1 }) as never);
 
         expect(grouped).toHaveBeenCalledTimes(1);
-        expect(emit).not.toHaveBeenCalled();
+        expect(onNewMessage).not.toHaveBeenCalled();
+    });
+});
+
+describe('TelegramClientBot media cleanup', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    test('removes downloaded media only after all listeners finish', async () => {
+        const bot = Object.create(TelegramClientBot.prototype) as TelegramClientBot;
+        bot['config'] = mockConfig;
+        bot['logger'] = mockLogger;
+        bot['eventsGrouped'] = new Map<number, never>();
+
+        const rm = fs.rm as unknown as ReturnType<typeof vi.fn>;
+        rm.mockReset();
+
+        const order: string[] = [];
+        rm.mockImplementation(async () => {
+            order.push('rm');
+        });
+
+        bot.on('newMessage', async () => {
+            order.push('listener-start');
+            await Promise.resolve();
+            order.push('listener-end');
+        });
+
+        await (bot as any).dispatchNewMessage({
+            events: [],
+            mediaFiles: ['/data/telegram_media/a.jpeg', '/data/telegram_media/b.mp4']
+        });
+
+        // Listener fully completes before any file is removed.
+        expect(order).toEqual(['listener-start', 'listener-end', 'rm', 'rm']);
+        expect(rm).toHaveBeenCalledWith('/data/telegram_media/a.jpeg', { force: true });
+        expect(rm).toHaveBeenCalledWith('/data/telegram_media/b.mp4', { force: true });
     });
 });

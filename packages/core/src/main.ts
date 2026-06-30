@@ -24,11 +24,11 @@ try {
     const discordClient = new DiscordClient(config);
     await discordClient.init();
 
-    telegramClientBot.addListener('newMessage', eventsGroupedResult => {
-        void discordClient.postMessage(eventsGroupedResult).catch(error => {
+    telegramClientBot.addListener('newMessage', eventsGroupedResult =>
+        discordClient.postMessage(eventsGroupedResult).catch(error => {
             logger.error(error);
-        });
-    });
+        })
+    );
 } catch (e) {
     logger.error(e);
 }

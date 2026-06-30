@@ -108,7 +108,7 @@ export default class TelegramClientBot extends EventEmitter {
                 mediaFiles: groupedEvents.mediaFiles
             };
 
-            this.emit('newMessage', eventsGroupedResult);
+            await this.dispatchNewMessage(eventsGroupedResult);
         } catch (error) {
             this.logger.error(`Failed to process grouped message ${groupedId}`, { error });
         }
@@ -242,6 +242,33 @@ export default class TelegramClientBot extends EventEmitter {
 
         await this.downloadMedia(event, eventsGroupedResult);
 
-        this.emit('newMessage', eventsGroupedResult);
+        await this.dispatchNewMessage(eventsGroupedResult);
+    }
+
+    /**
+     * Notifies all `newMessage` listeners and waits for them to finish before
+     * removing the downloaded media, so files are not deleted while a listener
+     * is still reading them.
+     */
+    private async dispatchNewMessage(eventsGroupedResult: eventsGroupedResult): Promise<void> {
+        const listeners = this.listeners('newMessage') as ((result: eventsGroupedResult) => unknown)[];
+
+        await Promise.allSettled(listeners.map(listener => listener(eventsGroupedResult)));
+
+        await this.removeMediaFiles(eventsGroupedResult.mediaFiles);
+    }
+
+    private async removeMediaFiles(mediaFiles: eventsGroupedResult['mediaFiles']): Promise<void> {
+        for (const mediaFile of mediaFiles) {
+            if (typeof mediaFile !== 'string') {
+                continue;
+            }
+
+            try {
+                await fs.rm(mediaFile, { force: true });
+            } catch (error) {
+                this.logger.error(`Failed to remove media file ${mediaFile}`, { error });
+            }
+        }
     }
 }
