@@ -91,6 +91,11 @@ export default class TelegramBotClient extends TelegramSource {
 
     private async handle(ctx: Context): Promise<void> {
         if (ctx.msg === undefined || !this.isAllowed(ctx)) {
+            if (ctx.from) {
+                this.logger.info(
+                    `Ignored non-allowlisted sender: id=${ctx.from.id} @${ctx.from.username ?? '?'} chat=${ctx.chat?.id}`,
+                );
+            }
             return;
         }
 
