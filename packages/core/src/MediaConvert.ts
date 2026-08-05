@@ -2,6 +2,7 @@ import shell from 'any-shell-escape';
 import pathToFfmpeg from 'ffmpeg-static';
 import { path as pathToFfprobe } from 'ffprobe-static';
 import { exec, spawn } from 'node:child_process';
+import { statSync, unlinkSync } from 'node:fs';
 import Path, { resolve } from 'node:path';
 import process from 'node:process';
 import winston from 'winston';
@@ -94,12 +95,28 @@ export default class MediaConvert {
             this.logger.debug(`Part No. ${i} starts at ${currentDuration}`);
 
             if (partDuration <= 0) {
-                throw new Error(`Unable to split ${nextFileName}: ffprobe reported a non-positive duration`);
+                // With no good parts yet, the source itself is unreadable.
+                if (resultFiles.length === 0) {
+                    throw new Error(`Unable to split ${nextFileName}: ffprobe reported a non-positive duration`);
+                }
+
+                // EOF landed exactly on the size cap: the previous parts already hold
+                // the whole video, and this attempt produced an empty file.
+                unlinkSync(nextFileName);
+                break;
             }
 
             currentDuration += partDuration;
 
             resultFiles.push(nextFileName);
+
+            // A part that hit the -fs cap comes out at (or just over) MAX_PART_SIZE_BYTES;
+            // one under the cap means ffmpeg exhausted the input, so this is the last part —
+            // regardless of the duration arithmetic, which trusts the source's metadata and
+            // rounds to frame boundaries.
+            if (statSync(nextFileName).size < MAX_PART_SIZE_BYTES) {
+                break;
+            }
 
             i++;
         }

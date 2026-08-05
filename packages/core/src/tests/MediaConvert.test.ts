@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test, beforeEach, vi } from 'vitest';
+import { afterEach, describe, expect, test, beforeEach, vi, Mock } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { statSync, unlinkSync } from 'node:fs';
 import MediaConvert from '../MediaConvert';
 import { Config } from '../Config.js';
 import winston from 'winston';
@@ -7,6 +8,12 @@ import winston from 'winston';
 vi.mock('node:child_process', () => ({
     exec: vi.fn(),
     spawn: vi.fn()
+}));
+
+vi.mock('node:fs', async importOriginal => ({
+    ...(await importOriginal<typeof import('node:fs')>()),
+    statSync: vi.fn(),
+    unlinkSync: vi.fn()
 }));
 
 const mockConfig: Config = {
@@ -59,6 +66,8 @@ describe('MediaConvert', () => {
     test('should split video by size with fractional durations', async () => {
         mediaConvert.setSrc('source.mp4');
 
+        // Every part hits the size cap, so the loop keeps going until the durations run out.
+        (statSync as Mock).mockReturnValue({ size: 9_000_000 });
         const getDurationSpy = vi.spyOn(MediaConvert, 'getDuration').mockImplementation(async file => {
             return file === 'source.mp4' ? 1.1 : 0.4;
         });
@@ -73,6 +82,63 @@ describe('MediaConvert', () => {
         ]);
         expect(getDurationSpy).toHaveBeenCalledTimes(4);
         expect(splitVideoPartSpy).toHaveBeenCalledTimes(3);
+    });
+
+    test('should not demand an extra part when the re-encoded part probes shorter than the source', async () => {
+        mediaConvert.setSrc('source.mp4');
+
+        // A re-encoded part ends on a frame boundary, so it probes a hair shorter than
+        // the source (12.400000 vs 12.401667); chasing the residual yields an empty part.
+        // The part is under the size cap, which means ffmpeg exhausted the input.
+        (statSync as Mock).mockReturnValue({ size: 3_381_576 });
+        const getDurationSpy = vi.spyOn(MediaConvert, 'getDuration').mockImplementation(async file => {
+            return file === 'source.mp4' ? 12.401667 : 12.4;
+        });
+        const splitVideoPartSpy = vi.spyOn(mediaConvert, 'splitVideoPart').mockResolvedValue(undefined);
+
+        const result = await mediaConvert.splitBySize();
+
+        expect(result).toEqual(['/mock/data/dir/convert/source-1.mp4']);
+        expect(getDurationSpy).toHaveBeenCalledTimes(2);
+        expect(splitVideoPartSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test('should discard an empty trailing part and keep the good ones when EOF lands on the size cap', async () => {
+        mediaConvert.setSrc('source.mp4');
+
+        // Part 1 hit the cap exactly as the input ran out, so the loop attempts a part 2
+        // that contains nothing. The good parts already hold the whole video: clean up
+        // the empty file and deliver, instead of throwing everything away.
+        (statSync as Mock).mockReturnValue({ size: 9_000_000 });
+        vi.spyOn(MediaConvert, 'getDuration').mockImplementation(async file => {
+            if (file === 'source.mp4') return 30;
+            return file.endsWith('-1.mp4') ? 12.4 : 0;
+        });
+        const splitVideoPartSpy = vi.spyOn(mediaConvert, 'splitVideoPart').mockResolvedValue(undefined);
+
+        const result = await mediaConvert.splitBySize();
+
+        expect(result).toEqual(['/mock/data/dir/convert/source-1.mp4']);
+        expect(splitVideoPartSpy).toHaveBeenCalledTimes(2);
+        expect(unlinkSync).toHaveBeenCalledWith('/mock/data/dir/convert/source-2.mp4');
+    });
+
+    test('should stop after an under-cap part even when the source metadata overstates the duration', async () => {
+        mediaConvert.setSrc('source.mp4');
+
+        // Container claims 30 s but only 12.4 s decode (e.g. a truncated upload). The
+        // part came out under the size cap, so ffmpeg reached end-of-input — done,
+        // regardless of what the duration arithmetic says.
+        (statSync as Mock).mockReturnValue({ size: 5_000_000 });
+        vi.spyOn(MediaConvert, 'getDuration').mockImplementation(async file => {
+            return file === 'source.mp4' ? 30 : 12.4;
+        });
+        const splitVideoPartSpy = vi.spyOn(mediaConvert, 'splitVideoPart').mockResolvedValue(undefined);
+
+        const result = await mediaConvert.splitBySize();
+
+        expect(result).toEqual(['/mock/data/dir/convert/source-1.mp4']);
+        expect(splitVideoPartSpy).toHaveBeenCalledTimes(1);
     });
 
     test('should use container duration when stream duration is missing', async () => {
