@@ -266,6 +266,58 @@ describe('TelegramBotClient album grouping', () => {
         expect(payload.text).toBe('album caption');
         expect(payload.url).toBe('https://t.me/mychan/1');
     });
+
+    const makeApi = () => ({
+        sendMessage: vi.fn().mockResolvedValue({ message_id: 42 }),
+        editMessageText: vi.fn().mockResolvedValue(true),
+        getFile: vi.fn()
+    });
+
+    const dmCtx = (msg: object, api = makeApi()) => ({
+        msg: { message_id: 5, ...msg },
+        chat: { id: 111, type: 'private' },
+        from: { id: 111, first_name: 'Max' },
+        api,
+        reply: vi.fn().mockResolvedValue(undefined)
+    });
+
+    test('mixed album: one summary status message', async () => {
+        vi.useFakeTimers();
+        const bot = makeBot();
+        bot.on('newMessage', vi.fn());
+        const api = makeApi();
+        // First item: ok photo; second: unsupported audio. Stub downloadMedia directly.
+        vi.spyOn(bot as any, 'downloadMedia')
+            .mockResolvedValueOnce({ status: 'ok', file: '/mock/a.jpeg' })
+            .mockResolvedValueOnce({ status: 'unsupported', kind: 'audio' });
+
+        await (bot as any).handle(dmCtx({ media_group_id: 'g1', caption: 'trip' }, api));
+        await (bot as any).handle(dmCtx({ media_group_id: 'g1', audio: {} }, api));
+        await vi.advanceTimersByTimeAsync(5000);
+
+        expect(api.sendMessage).toHaveBeenCalledTimes(1);
+        expect(api.sendMessage).toHaveBeenCalledWith(111, '📤 Processing album (1 items)…');
+        expect(api.editMessageText).toHaveBeenCalledWith(111, 42, '✅ Delivered 1 of 2 items; skipped: audio');
+        vi.useRealTimers();
+    });
+
+    test('all-unsupported album with no caption: reject reply, no dispatch', async () => {
+        vi.useFakeTimers();
+        const bot = makeBot();
+        const onNewMessage = vi.fn();
+        bot.on('newMessage', onNewMessage);
+        const api = makeApi();
+        vi.spyOn(bot as any, 'downloadMedia').mockResolvedValue({ status: 'unsupported', kind: 'audio' });
+
+        const ctx = dmCtx({ media_group_id: 'g2', audio: {} }, api);
+        await (bot as any).handle(ctx);
+        await vi.advanceTimersByTimeAsync(5000);
+
+        expect(ctx.reply).toHaveBeenCalledWith('⚠️ Unsupported content (audio) — nothing to forward');
+        expect(onNewMessage).not.toHaveBeenCalled();
+        expect(api.sendMessage).not.toHaveBeenCalled();
+        vi.useRealTimers();
+    });
 });
 
 describe('TelegramBotClient API reachability', () => {

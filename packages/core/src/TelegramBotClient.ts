@@ -15,6 +15,7 @@ const DEFAULT_API_ROOT = 'https://api.telegram.org';
 interface AlbumBuffer {
     representative: Context;
     mediaFiles: string[];
+    results: DownloadResult[];
     timeout: ReturnType<typeof setTimeout> | null;
 }
 
@@ -227,7 +228,7 @@ export default class TelegramBotClient extends TelegramSource {
         let album = this.albums.get(groupId);
 
         if (album === undefined) {
-            album = { representative: ctx, mediaFiles: [], timeout: null };
+            album = { representative: ctx, mediaFiles: [], results: [], timeout: null };
             this.albums.set(groupId, album);
         }
 
@@ -238,6 +239,7 @@ export default class TelegramBotClient extends TelegramSource {
             album.representative = ctx;
         }
 
+        album.results.push(result);
         if (result.status === 'ok') {
             album.mediaFiles.push(result.file);
         }
@@ -255,8 +257,58 @@ export default class TelegramBotClient extends TelegramSource {
         }
         this.albums.delete(groupId);
 
+        const rep = album.representative;
+        const text = rep.msg?.caption ?? rep.msg?.text ?? '';
+        const isDm = rep.chat?.type === 'private';
+        const accepted = album.results.filter(r => r.status === 'ok').length;
+        const skippedKinds = [
+            ...new Set(
+                album.results.flatMap(r => (r.status === 'unsupported' || r.status === 'failed' ? [r.kind] : []))
+            )
+        ];
+
         try {
-            await this.dispatch(toForwardPayload(album.representative, album.mediaFiles));
+            if (accepted === 0 && !text) {
+                if (isDm) {
+                    const kinds = skippedKinds.length > 0 ? ` (${skippedKinds.join(', ')})` : '';
+                    await this.reply(rep, `⚠️ Unsupported content${kinds} — nothing to forward`);
+                }
+                return;
+            }
+
+            const status =
+                isDm && rep.chat
+                    ? await StatusMessage.create(
+                          rep.api,
+                          rep.chat.id,
+                          `📤 Processing album (${accepted} items)…`,
+                          this.logger
+                      )
+                    : null;
+
+            const payload = toForwardPayload(rep, album.mediaFiles);
+            const failures: string[] = [];
+
+            if (status) {
+                payload.onStatus = s => {
+                    if (s.stage === 'converting') {
+                        status.update('🎞️ Converting video…');
+                    } else if (s.stage === 'uploading') {
+                        status.update(`📤 Sending to Discord (${s.chunk}/${s.totalChunks})…`);
+                    } else {
+                        failures.push(s.reason);
+                    }
+                };
+            }
+
+            await this.dispatch(payload);
+
+            if (failures.length > 0) {
+                await status?.finalize(`❌ Failed: ${failures[0]}`);
+            } else {
+                const skipped = skippedKinds.length > 0 ? `; skipped: ${skippedKinds.join(', ')}` : '';
+                await status?.finalize(`✅ Delivered ${accepted} of ${album.results.length} items${skipped}`);
+            }
         } catch (error) {
             this.logger.error(`Failed to process album ${groupId}`, { error });
         }
