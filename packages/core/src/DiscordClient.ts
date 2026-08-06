@@ -17,6 +17,14 @@ const SEND_INTERVAL_MS = 5000;
 // larger ones are split. Kept below 10 MB for multipart/embed overhead.
 const MAX_ATTACHMENT_MIB = 9;
 
+// Discord rejects messages with more than 10 attachments (50035 BASE_TYPE_MAX_LENGTH)
+// or more than 10 embeds, and caps the whole request at 25 MiB ("The maximum request
+// size when sending a message is 25 MiB"). A chunk must stay within all three; the byte
+// budget leaves headroom for payload_json and multipart boundaries.
+const MAX_FILES_PER_MESSAGE = 10;
+const MAX_EMBEDS_PER_MESSAGE = 10;
+const MAX_REQUEST_BYTES = 24 * 1024 * 1024;
+
 function HexColorToNumber(hexColor: string): number {
     return Number(hexColor.replace('#', '0x'));
 }
@@ -180,6 +188,18 @@ export default class DiscordClient {
 
         let embeds = embedsChunks[embedsChunks.push([]) - 1];
         let files = filesChunks[filesChunks.push([]) - 1];
+        let chunkBytes = 0;
+
+        const startNewChunk = () => {
+            embeds = embedsChunks[embedsChunks.push([]) - 1];
+            files = filesChunks[filesChunks.push([]) - 1];
+            chunkBytes = 0;
+        };
+
+        // A chunk is full for the next attachment when it is at the file cap or the
+        // extra bytes would push the request over the size cap (never roll an empty chunk).
+        const chunkFullFor = (bytes: number) =>
+            files.length >= MAX_FILES_PER_MESSAGE || (files.length > 0 && chunkBytes + bytes > MAX_REQUEST_BYTES);
 
         // Resolve the attribution shown at the top of the message. A per-source override
         // (by Telegram id) can replace the name and link; otherwise use the source defaults.
@@ -206,19 +226,30 @@ export default class DiscordClient {
                 }
 
                 if (mediaFile.endsWith('.mp4')) {
-                    const { files: videoFiles, remove } = await this.prepareVideo(mediaFile);
+                    const { files: videoFiles, sizes, remove } = await this.prepareVideo(mediaFile);
 
-                    files.push(...videoFiles);
+                    for (const [n, videoFile] of videoFiles.entries()) {
+                        if (chunkFullFor(sizes[n])) {
+                            startNewChunk();
+                        }
+
+                        files.push(videoFile);
+                        chunkBytes += sizes[n];
+                    }
+
                     filePartsToRemove.push(...remove);
 
                     continue;
                 }
 
                 if (mediaFile.endsWith('.jpeg')) {
-                    if (embeds.length % 10 === 0) {
-                        embeds = embedsChunks[embedsChunks.push([]) - 1];
-                        files = filesChunks[filesChunks.push([]) - 1];
+                    const imageBytes = fs.statSync(mediaFile).size;
+
+                    if (embeds.length >= MAX_EMBEDS_PER_MESSAGE || chunkFullFor(imageBytes)) {
+                        startNewChunk();
                     }
+
+                    chunkBytes += imageBytes;
 
                     embeds.push({
                         color,
@@ -239,10 +270,12 @@ export default class DiscordClient {
     /**
      * Turns a single mp4 into Discord attachments: transcodes H.265/HEVC files
      * to H.264 so Discord can preview them, and splits files over the upload
-     * limit. Returns the attachments plus any derived files to clean up.
+     * limit. Returns the attachments, their byte sizes (parallel to files, so
+     * buildChunks can budget the request size), and any derived files to clean up.
      */
-    async prepareVideo(mediaFile: string): Promise<{ files: AttachmentBuilder[]; remove: string[] }> {
+    async prepareVideo(mediaFile: string): Promise<{ files: AttachmentBuilder[]; sizes: number[]; remove: string[] }> {
         const files: AttachmentBuilder[] = [];
+        const sizes: number[] = [];
         const remove: string[] = [];
 
         try {
@@ -264,6 +297,7 @@ export default class DiscordClient {
 
             if (fSize <= MAX_ATTACHMENT_MIB) {
                 files.push(new AttachmentBuilder(fs.createReadStream(videoFile), { name: path.basename(videoFile) }));
+                sizes.push(fs.statSync(videoFile).size);
             } else {
                 const fileParts: string[] = await new MediaConvert(this.config, this.logger)
                     .setSrc(videoFile)
@@ -271,6 +305,7 @@ export default class DiscordClient {
 
                 for (const file of fileParts) {
                     files.push(new AttachmentBuilder(fs.createReadStream(file), { name: path.basename(file) }));
+                    sizes.push(fs.statSync(file).size);
                 }
 
                 remove.push(...fileParts);
@@ -279,6 +314,6 @@ export default class DiscordClient {
             this.logger.error(`Failed to process video ${mediaFile}`, { error });
         }
 
-        return { files, remove };
+        return { files, sizes, remove };
     }
 }

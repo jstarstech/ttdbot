@@ -223,6 +223,78 @@ describe('DiscordClient.buildChunks', () => {
         expect(chunks.embedsChunks[0][0].url).toBe('https://example.org/');
     });
 
+    // Sizes by path: source videos are big, split parts ~9 MB, images small.
+    const statSyncBySize = () =>
+        statSync.mockImplementation((file: string) => {
+            if (file.endsWith('.jpeg')) return { size: 500_000 };
+            if (file.includes('/convert/')) return { size: 9_000_000 };
+            return mb(200);
+        });
+
+    test('keeps every chunk at 10 or fewer attachments when images and split video parts combine', async () => {
+        // Live failure (t.me/m4a1ks/201): 9 jpegs + a video split into 2 parts landed
+        // 11 attachments in one message; Discord rejects >10 (50035 BASE_TYPE_MAX_LENGTH).
+        statSyncBySize();
+        mocks.instance.splitBySize.mockResolvedValue(['/mock/data/dir/convert/v-1.mp4', '/mock/data/dir/convert/v-2.mp4']);
+
+        const jpegs = Array.from({ length: 9 }, (_, n) => `/data/telegram_media/img${n}.jpeg`);
+        const chunks = await client.buildChunks(payload([...jpegs, '/data/telegram_media/v.mp4']));
+
+        expect(chunks.filesChunks.length).toBe(chunks.embedsChunks.length);
+        for (const files of chunks.filesChunks) {
+            expect(files.length).toBeLessThanOrEqual(10);
+        }
+        expect(chunks.filesChunks.flat()).toHaveLength(11); // nothing dropped
+    });
+
+    test('keeps every chunk under the 25 MiB request cap: 3 nine-MB parts span two messages', async () => {
+        // Discord: "The maximum request size when sending a message is 25 MiB".
+        // 3 x 9 MB in one multipart request is ~27 MB — over the cap even though the
+        // attachment count (3) is fine.
+        statSyncBySize();
+        mocks.instance.splitBySize.mockResolvedValue(
+            Array.from({ length: 3 }, (_, n) => `/mock/data/dir/convert/v-${n + 1}.mp4`)
+        );
+
+        const chunks = await client.buildChunks(payload(['/data/telegram_media/v.mp4']));
+
+        expect(chunks.filesChunks.map(files => files.length)).toEqual([2, 1]);
+    });
+
+    test('rolls an image to the next chunk when it would push the request over the byte budget', async () => {
+        statSync.mockImplementation((file: string) => {
+            if (file.endsWith('.jpeg')) return { size: 8_000_000 };
+            if (file.includes('/convert/')) return { size: 9_000_000 };
+            return mb(200);
+        });
+        mocks.instance.splitBySize.mockResolvedValue(
+            Array.from({ length: 2 }, (_, n) => `/mock/data/dir/convert/v-${n + 1}.mp4`)
+        );
+
+        // 9 + 9 MB parts leave no room for an 8 MB image in the same request.
+        const chunks = await client.buildChunks(
+            payload(['/data/telegram_media/v.mp4', '/data/telegram_media/big.jpeg'])
+        );
+
+        expect(chunks.filesChunks.map(files => files.length)).toEqual([2, 1]);
+        expect(chunks.embedsChunks[1][0].image?.url).toBe('attachment://big.jpeg');
+    });
+
+    test('spreads a video split into more than 10 parts across multiple chunks', async () => {
+        statSyncBySize();
+        mocks.instance.splitBySize.mockResolvedValue(
+            Array.from({ length: 25 }, (_, n) => `/mock/data/dir/convert/v-${n + 1}.mp4`)
+        );
+
+        const chunks = await client.buildChunks(payload(['/data/telegram_media/v.mp4']));
+
+        expect(chunks.filesChunks.length).toBe(chunks.embedsChunks.length);
+        for (const files of chunks.filesChunks) {
+            expect(files.length).toBeLessThanOrEqual(10);
+        }
+        expect(chunks.filesChunks.flat()).toHaveLength(25);
+    });
+
     const withOverride = (override: { name?: string; url?: string }) =>
         new DiscordClient({ ...mockConfig, overrides: { '389': override } } as Config, mockLogger);
 
