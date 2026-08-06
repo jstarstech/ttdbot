@@ -19,6 +19,7 @@ export default class StatusMessage {
     private lastSentText: string;
     private lastEditAt: number;
     private timer: ReturnType<typeof setTimeout> | null = null;
+    private editPromise: Promise<void> = Promise.resolve();
 
     private constructor(
         private readonly api: StatusApi,
@@ -77,10 +78,18 @@ export default class StatusMessage {
         }
 
         this.latestText = text;
+        // Wait for any in-flight edit to complete before queueing the final one.
+        await this.editPromise;
         await this.edit();
     }
 
     private async edit(): Promise<void> {
+        // Serialize edits: queue this edit after any in-flight edits complete.
+        this.editPromise = this.editPromise.then(() => this.performEdit());
+        await this.editPromise;
+    }
+
+    private async performEdit(): Promise<void> {
         const text = this.latestText;
 
         // Telegram rejects no-op edits with a 400; skip them.
@@ -88,11 +97,14 @@ export default class StatusMessage {
             return;
         }
 
+        // Record attempt time for throttle spacing (before API call).
         this.lastEditAt = Date.now();
-        this.lastSentText = text;
 
         try {
             await this.api.editMessageText(this.chatId, this.messageId, text);
+            // Only update lastSentText after the API call succeeds, so failed edits
+            // are retryable and not falsely marked as sent.
+            this.lastSentText = text;
         } catch (error) {
             this.logger.error('Failed to edit status message', { error });
         }

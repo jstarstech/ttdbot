@@ -72,4 +72,66 @@ describe('StatusMessage', () => {
         await status.finalize('done');
         expect(mockLogger.error).toHaveBeenCalled();
     });
+
+    test('a failed edit is retryable: the text is not marked as sent on error', async () => {
+        const api = makeApi();
+        const status = (await StatusMessage.create(api, 7, 'start', mockLogger))!;
+        // First attempt fails
+        api.editMessageText.mockRejectedValueOnce(new Error('network error'));
+        status.update('progress');
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(api.editMessageText).toHaveBeenCalledTimes(1);
+        expect(api.editMessageText).toHaveBeenCalledWith(7, 42, 'progress');
+        // Second attempt with same text succeeds; should NOT be skipped as a no-op
+        api.editMessageText.mockResolvedValueOnce(true);
+        status.update('progress');
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(api.editMessageText).toHaveBeenCalledTimes(2);
+        expect(api.editMessageText).toHaveBeenLastCalledWith(7, 42, 'progress');
+    });
+
+    test('finalize waits for in-flight edits before completing', async () => {
+        const api = makeApi();
+        // Track call order
+        const callOrder: string[] = [];
+        let resolveFirstEdit: (() => void) | null = null;
+        let callCount = 0;
+        api.editMessageText.mockImplementation(() => {
+            callCount++;
+            const callNum = callCount;
+            callOrder.push(`edit ${callNum} called`);
+            return new Promise<true>((resolve) => {
+                if (callNum === 1) {
+                    // First edit hangs until we resolve it
+                    resolveFirstEdit = () => {
+                        callOrder.push(`edit ${callNum} resolved`);
+                        resolve(true);
+                    };
+                } else {
+                    // Subsequent edits resolve immediately
+                    callOrder.push(`edit ${callNum} resolved`);
+                    resolve(true);
+                }
+            });
+        });
+        const status = (await StatusMessage.create(api, 7, 'start', mockLogger))!;
+        // Trigger an update to schedule the first edit
+        status.update('progress');
+        await vi.advanceTimersByTimeAsync(1500);
+        expect(callOrder).toEqual(['edit 1 called']);
+        // Call finalize while first edit is still in flight
+        const finalizePromise = status.finalize('done');
+        // Yield control
+        await vi.advanceTimersByTimeAsync(0);
+        // finalize should be blocked waiting for the first edit
+        expect(callOrder).toEqual(['edit 1 called']);
+        // Now resolve the first edit
+        resolveFirstEdit?.();
+        // Wait for finalize to complete
+        await finalizePromise;
+        // Now we should see the second edit was called and resolved
+        expect(callOrder).toContain('edit 2 called');
+        expect(api.editMessageText).toHaveBeenCalledTimes(2);
+        expect(api.editMessageText).toHaveBeenLastCalledWith(7, 42, 'done');
+    });
 });
