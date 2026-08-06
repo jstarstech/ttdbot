@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import TelegramBotClient from '../TelegramBotClient';
 import { Config } from '../Config.js';
+import { ForwardPayload } from '../types.js';
 import winston from 'winston';
 
 vi.mock('node:fs/promises', () => ({
@@ -298,5 +299,105 @@ describe('TelegramBotClient API reachability', () => {
         await (bot as any).warnIfApiUnreachable();
 
         expect(mockLogger.error).not.toHaveBeenCalled();
+    });
+});
+
+describe('TelegramBotClient DM status replies', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    const makeApi = () => ({
+        sendMessage: vi.fn().mockResolvedValue({ message_id: 42 }),
+        editMessageText: vi.fn().mockResolvedValue(true),
+        getFile: vi.fn()
+    });
+
+    const dmCtx = (msg: object, api = makeApi()) => ({
+        msg: { message_id: 5, ...msg },
+        chat: { id: 111, type: 'private' },
+        from: { id: 111, first_name: 'Max' },
+        api,
+        reply: vi.fn().mockResolvedValue(undefined)
+    });
+
+    test('unsupported DM with no caption: reject reply, no dispatch', async () => {
+        const bot = makeBot();
+        const onNewMessage = vi.fn();
+        bot.on('newMessage', onNewMessage);
+        const ctx = dmCtx({ sticker: {} });
+
+        await (bot as any).handle(ctx);
+
+        expect(ctx.reply).toHaveBeenCalledWith('⚠️ Unsupported content (sticker) — nothing to forward');
+        expect(onNewMessage).not.toHaveBeenCalled();
+        expect(ctx.api.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test('text-only DM: status message created and finalized ✅ Delivered', async () => {
+        const bot = makeBot();
+        bot.on('newMessage', vi.fn());
+        const ctx = dmCtx({ text: 'hello' });
+
+        await (bot as any).handle(ctx);
+
+        expect(ctx.api.sendMessage).toHaveBeenCalledWith(111, '📤 Forwarding to Discord…');
+        expect(ctx.api.editMessageText).toHaveBeenCalledWith(111, 42, '✅ Delivered');
+    });
+
+    test('unsupported media with caption: caption forwards, final notes the skip', async () => {
+        const bot = makeBot();
+        const onNewMessage = vi.fn();
+        bot.on('newMessage', onNewMessage);
+        const ctx = dmCtx({ sticker: {}, caption: 'look' });
+
+        await (bot as any).handle(ctx);
+
+        expect(onNewMessage).toHaveBeenCalledWith(expect.objectContaining({ text: 'look', mediaFiles: [] }));
+        expect(ctx.api.editMessageText).toHaveBeenCalledWith(111, 42, '✅ Delivered (text only; skipped: sticker)');
+    });
+
+    test('listener failure status surfaces as ❌ final', async () => {
+        const bot = makeBot();
+        bot.on('newMessage', (payload: ForwardPayload) => {
+            payload.onStatus?.({ stage: 'failed', reason: 'Discord send error' });
+        });
+        const ctx = dmCtx({ text: 'hello' });
+
+        await (bot as any).handle(ctx);
+
+        expect(ctx.api.editMessageText).toHaveBeenCalledWith(111, 42, '❌ Failed: Discord send error');
+    });
+
+    test('channel post gets no replies or status messages', async () => {
+        const bot = makeBot();
+        bot.on('newMessage', vi.fn());
+        const api = makeApi();
+        const ctx = {
+            msg: { message_id: 9, text: 'news' },
+            chat: { id: -100222, type: 'channel', title: 'My Channel', username: 'mychan' },
+            api,
+            reply: vi.fn()
+        };
+
+        await (bot as any).handle(ctx);
+
+        expect(ctx.reply).not.toHaveBeenCalled();
+        expect(api.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test('empty channel post (no text, no media) is not dispatched', async () => {
+        const bot = makeBot();
+        const onNewMessage = vi.fn();
+        bot.on('newMessage', onNewMessage);
+
+        await (bot as any).handle({
+            msg: { message_id: 9 },
+            chat: { id: -100222, type: 'channel' },
+            api: makeApi(),
+            reply: vi.fn()
+        });
+
+        expect(onNewMessage).not.toHaveBeenCalled();
     });
 });

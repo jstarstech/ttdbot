@@ -4,6 +4,7 @@ import { Bot, Context } from 'grammy';
 import winston from 'winston';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
+import StatusMessage from './StatusMessage.js';
 import TelegramSource from './TelegramSource.js';
 import { ForwardPayload } from './types.js';
 
@@ -132,20 +133,97 @@ export default class TelegramBotClient extends TelegramSource {
             return;
         }
 
-        const result = await this.downloadMedia(ctx);
-        const file = result.status === 'ok' ? result.file : null;
         const groupId = ctx.msg.media_group_id;
 
-        if (groupId === undefined) {
-            await this.dispatch(toForwardPayload(ctx, file ? [file] : []));
+        if (groupId !== undefined) {
+            this.bufferAlbumItem(groupId, ctx, await this.downloadMedia(ctx));
             return;
         }
 
-        this.bufferAlbumItem(groupId, ctx, file);
+        await this.handleSingle(ctx);
+    }
+
+    private async handleSingle(ctx: Context): Promise<void> {
+        const msg = ctx.msg!;
+        const text = msg.caption ?? msg.text ?? '';
+        const classification = this.classifyMedia(msg);
+        const isDm = ctx.chat?.type === 'private';
+
+        // Nothing forwardable: reject (DM) and never dispatch — no empty Discord messages.
+        if (classification.kind !== 'supported' && !text) {
+            if (isDm) {
+                const media = classification.kind === 'unsupported' ? ` (${classification.media})` : '';
+                await this.reply(ctx, `⚠️ Unsupported content${media} — nothing to forward`);
+            }
+            return;
+        }
+
+        const status =
+            isDm && ctx.chat
+                ? await StatusMessage.create(
+                      ctx.api,
+                      ctx.chat.id,
+                      classification.kind === 'supported'
+                          ? '⬇️ Downloading from Telegram…'
+                          : '📤 Forwarding to Discord…',
+                      this.logger
+                  )
+                : null;
+
+        let file: string | null = null;
+        let skippedNote = classification.kind === 'unsupported' ? `skipped: ${classification.media}` : null;
+
+        if (classification.kind === 'supported') {
+            const result = await this.downloadMedia(ctx);
+
+            if (result.status === 'ok') {
+                file = result.file;
+            } else {
+                if (!text) {
+                    await status?.finalize(
+                        `❌ Failed to fetch the ${classification.ext === 'jpeg' ? 'photo' : 'video'}`
+                    );
+                    return;
+                }
+                skippedNote = 'media download failed';
+            }
+        }
+
+        const payload = toForwardPayload(ctx, file ? [file] : []);
+        const failures: string[] = [];
+
+        if (status) {
+            payload.onStatus = s => {
+                if (s.stage === 'converting') {
+                    status.update('🎞️ Converting video…');
+                } else if (s.stage === 'uploading') {
+                    status.update(`📤 Sending to Discord (${s.chunk}/${s.totalChunks})…`);
+                } else {
+                    failures.push(s.reason);
+                }
+            };
+        }
+
+        await this.dispatch(payload);
+
+        if (failures.length > 0) {
+            await status?.finalize(`❌ Failed: ${failures[0]}`);
+        } else {
+            await status?.finalize(`✅ Delivered${skippedNote ? ` (text only; ${skippedNote})` : ''}`);
+        }
+    }
+
+    /** DM reply that never breaks the pipeline on Telegram errors. */
+    private async reply(ctx: Context, text: string): Promise<void> {
+        try {
+            await ctx.reply(text);
+        } catch (error) {
+            this.logger.error('Failed to send status reply', { error });
+        }
     }
 
     /** Accumulates album items sharing a media_group_id, flushing 5 s after the last one. */
-    private bufferAlbumItem(groupId: string, ctx: Context, file: string | null): void {
+    private bufferAlbumItem(groupId: string, ctx: Context, result: DownloadResult): void {
         let album = this.albums.get(groupId);
 
         if (album === undefined) {
@@ -160,8 +238,8 @@ export default class TelegramBotClient extends TelegramSource {
             album.representative = ctx;
         }
 
-        if (file) {
-            album.mediaFiles.push(file);
+        if (result.status === 'ok') {
+            album.mediaFiles.push(result.file);
         }
 
         if (album.timeout) {
