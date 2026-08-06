@@ -17,6 +17,17 @@ interface AlbumBuffer {
     timeout: ReturnType<typeof setTimeout> | null;
 }
 
+export type MediaClassification =
+    | { kind: 'supported'; ext: 'jpeg' | 'mp4'; fileId: string }
+    | { kind: 'unsupported'; media: string } // media: 'sticker', 'voice', 'document(audio/mpeg)', …
+    | { kind: 'none' };
+
+export type DownloadResult =
+    | { status: 'ok'; file: string }
+    | { status: 'unsupported'; kind: string }
+    | { status: 'none' }
+    | { status: 'failed'; kind: string }; // supported type whose getFile/fetch threw
+
 async function downloadUrl(url: string): Promise<Buffer> {
     const response = await fetch(url);
 
@@ -121,7 +132,8 @@ export default class TelegramBotClient extends TelegramSource {
             return;
         }
 
-        const file = await this.downloadMedia(ctx);
+        const result = await this.downloadMedia(ctx);
+        const file = result.status === 'ok' ? result.file : null;
         const groupId = ctx.msg.media_group_id;
 
         if (groupId === undefined) {
@@ -172,56 +184,61 @@ export default class TelegramBotClient extends TelegramSource {
         }
     }
 
-    private async downloadMedia(ctx: Context): Promise<string | null> {
-        const msg = ctx.msg;
-        let ext: 'jpeg' | 'mp4' | null = null;
-        let fileId: string | undefined;
-
-        if (msg?.photo && msg.photo.length > 0) {
-            ext = 'jpeg';
-            fileId = msg.photo[msg.photo.length - 1].file_id; // largest size
-        } else if (msg?.video) {
-            ext = 'mp4';
-            fileId = msg.video.file_id;
-        } else if (msg?.animation) {
+    /** Pure classification of a message's media — no I/O, cheap to call repeatedly. */
+    private classifyMedia(msg: NonNullable<Context['msg']>): MediaClassification {
+        if (msg.photo && msg.photo.length > 0) {
+            return { kind: 'supported', ext: 'jpeg', fileId: msg.photo[msg.photo.length - 1].file_id };
+        }
+        if (msg.video) {
+            return { kind: 'supported', ext: 'mp4', fileId: msg.video.file_id };
+        }
+        if (msg.animation) {
             // GIFs arrive as soundless mp4.
-            ext = 'mp4';
-            fileId = msg.animation.file_id;
-        } else if (msg?.document) {
-            // Media sent/forwarded "as a file".
+            return { kind: 'supported', ext: 'mp4', fileId: msg.animation.file_id };
+        }
+        if (msg.document) {
             const mime = msg.document.mime_type ?? '';
             if (mime.startsWith('video/')) {
-                ext = 'mp4';
-                fileId = msg.document.file_id;
-            } else if (mime.startsWith('image/')) {
-                ext = 'jpeg';
-                fileId = msg.document.file_id;
+                return { kind: 'supported', ext: 'mp4', fileId: msg.document.file_id };
             }
+            if (mime.startsWith('image/')) {
+                return { kind: 'supported', ext: 'jpeg', fileId: msg.document.file_id };
+            }
+            return { kind: 'unsupported', media: `document(${mime || 'unknown'})` };
         }
 
-        if (ext === null || fileId === undefined) {
-            const kinds = (
-                ['photo', 'video', 'animation', 'document', 'sticker', 'audio', 'voice', 'video_note'] as const
-            ).filter(k => msg?.[k] !== undefined);
-            if (kinds.length > 0) {
-                this.logger.info(`Skipping unsupported media: ${kinds.join(', ')}`);
-            }
-            return null;
+        const kind = (['sticker', 'audio', 'voice', 'video_note'] as const).find(k => msg[k] !== undefined);
+        return kind ? { kind: 'unsupported', media: kind } : { kind: 'none' };
+    }
+
+    private async downloadMedia(ctx: Context): Promise<DownloadResult> {
+        const msg = ctx.msg!;
+        const classification = this.classifyMedia(msg);
+
+        if (classification.kind === 'unsupported') {
+            this.logger.info(`Skipping unsupported media: ${classification.media}`);
+            return { status: 'unsupported', kind: classification.media };
         }
+        if (classification.kind === 'none') {
+            return { status: 'none' };
+        }
+
+        const { ext, fileId } = classification;
+        const mediaName = ext === 'jpeg' ? 'photo' : 'video';
 
         try {
             const file = await ctx.api.getFile(fileId);
 
             if (!file.file_path) {
                 this.logger.error('Bot media has no file_path (file too large for the cloud API?)');
-                return null;
+                return { status: 'failed', kind: mediaName };
             }
 
-            return await this.saveMediaFile(ext, await this.fetchFileBytes(file.file_path));
+            return { status: 'ok', file: await this.saveMediaFile(ext, await this.fetchFileBytes(file.file_path)) };
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             this.logger.error(`Failed to download bot media (${ext}): ${reason}`);
-            return null;
+            return { status: 'failed', kind: mediaName };
         }
     }
 

@@ -125,26 +125,29 @@ describe('TelegramBotClient.downloadMedia', () => {
             vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer })
         );
 
-        const file = await (bot as any).downloadMedia({
+        const result = await (bot as any).downloadMedia({
             msg: { photo: [{ file_id: 'small' }, { file_id: 'large' }] },
             api: { getFile }
         });
 
         expect(getFile).toHaveBeenCalledWith('large');
-        expect(file).toMatch(/^\/mock\/data\/dir\/telegram_media\/[0-9A-Z]{35}\.jpeg$/);
+        expect(result).toEqual({
+            status: 'ok',
+            file: expect.stringMatching(/^\/mock\/data\/dir\/telegram_media\/[0-9A-Z]{35}\.jpeg$/)
+        });
         expect(writeFile).toHaveBeenCalledTimes(1);
     });
 
-    test('returns null and logs when getFile rejects (e.g. over 20 MB on cloud)', async () => {
+    test('returns failed and logs when getFile rejects (e.g. over 20 MB on cloud)', async () => {
         const bot = makeBot();
         const getFile = vi.fn().mockRejectedValue(new Error('file is too big'));
 
-        const file = await (bot as any).downloadMedia({
+        const result = await (bot as any).downloadMedia({
             msg: { video: { file_id: 'big' } },
             api: { getFile }
         });
 
-        expect(file).toBeNull();
+        expect(result).toEqual({ status: 'failed', kind: 'video' });
         expect(writeFile).not.toHaveBeenCalled();
         expect(mockLogger.error).toHaveBeenCalled();
     });
@@ -157,13 +160,13 @@ describe('TelegramBotClient.downloadMedia', () => {
             vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer })
         );
 
-        const file = await (bot as any).downloadMedia({
+        const result = await (bot as any).downloadMedia({
             msg: { document: { file_id: 'doc', mime_type: 'video/mp4' } },
             api: { getFile }
         });
 
         expect(getFile).toHaveBeenCalledWith('doc');
-        expect(file).toMatch(/\.mp4$/);
+        expect(result).toEqual({ status: 'ok', file: expect.stringMatching(/\.mp4$/) });
     });
 
     test('fetches a --local absolute path from api_files_url, stripping the server dir', async () => {
@@ -181,13 +184,46 @@ describe('TelegramBotClient.downloadMedia', () => {
             .mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2]).buffer });
         vi.stubGlobal('fetch', fetchMock);
 
-        const file = await (bot as any).downloadMedia({
+        const result = await (bot as any).downloadMedia({
             msg: { video: { file_id: 'v' } },
             api: { getFile }
         });
 
         expect(fetchMock).toHaveBeenCalledWith('http://localhost:8082/TOK/videos/file_0.mp4');
-        expect(file).toMatch(/\.mp4$/);
+        expect(result).toEqual({ status: 'ok', file: expect.stringMatching(/\.mp4$/) });
+    });
+
+    test('returns unsupported for a sticker', async () => {
+        const bot = makeBot();
+
+        const result = await (bot as any).downloadMedia({
+            msg: { sticker: {} },
+            api: { getFile: vi.fn() }
+        });
+
+        expect(result).toEqual({ status: 'unsupported', kind: 'sticker' });
+    });
+
+    test('returns unsupported for a document with a non-media mime type', async () => {
+        const bot = makeBot();
+
+        const result = await (bot as any).downloadMedia({
+            msg: { document: { file_id: 'd', mime_type: 'audio/mpeg' } },
+            api: { getFile: vi.fn() }
+        });
+
+        expect(result).toEqual({ status: 'unsupported', kind: 'document(audio/mpeg)' });
+    });
+
+    test('returns none when the message has no media', async () => {
+        const bot = makeBot();
+
+        const result = await (bot as any).downloadMedia({
+            msg: { text: 'no media here' },
+            api: { getFile: vi.fn() }
+        });
+
+        expect(result).toEqual({ status: 'none' });
     });
 });
 
@@ -205,8 +241,8 @@ describe('TelegramBotClient album grouping', () => {
     test('batches media_group items and dispatches once after the debounce', async () => {
         const bot = makeBot();
         vi.spyOn(bot as any, 'downloadMedia')
-            .mockResolvedValueOnce('/m/a.jpeg')
-            .mockResolvedValueOnce('/m/b.jpeg');
+            .mockResolvedValueOnce({ status: 'ok', file: '/m/a.jpeg' })
+            .mockResolvedValueOnce({ status: 'ok', file: '/m/b.jpeg' });
         const onNewMessage = vi.fn();
         bot.on('newMessage', onNewMessage);
 
