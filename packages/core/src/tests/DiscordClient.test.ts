@@ -326,3 +326,66 @@ describe('DiscordClient.buildChunks', () => {
         expect(embed.description).toBe('hello world');
     });
 });
+
+describe('DiscordClient status emissions', () => {
+    let client: DiscordClient;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.instance.setSrc.mockReturnValue(mocks.instance);
+        mocks.instance.setDst.mockReturnValue(mocks.instance);
+        mocks.instance.convert.mockResolvedValue(true);
+        mocks.instance.splitBySize.mockResolvedValue(['/mock/data/dir/convert/v-1.mp4']);
+        mocks.getCodec.mockResolvedValue('h264');
+        statSync.mockImplementation((file: string) => (file.includes('/convert/') ? { size: 9_000_000 } : mb(20)));
+        createReadStream.mockReturnValue('STREAM');
+        client = new DiscordClient(mockConfig, mockLogger);
+    });
+
+    const payload = (mediaFiles: string[], over: Partial<ForwardPayload> = {}): ForwardPayload => ({
+        title: 'My Channel',
+        url: 'https://t.me/mychan/42',
+        text: 'hello world',
+        mediaFiles,
+        ...over
+    });
+
+    test('emits converting when a video is split', async () => {
+        const onStatus = vi.fn();
+        await client.buildChunks(payload(['/data/telegram_media/v.mp4'], { onStatus }));
+        expect(onStatus).toHaveBeenCalledWith({ stage: 'converting' });
+    });
+
+    test('does not emit converting for a small h264 video attached as-is', async () => {
+        statSync.mockReturnValue(mb(1));
+        const onStatus = vi.fn();
+        await client.buildChunks(payload(['/data/telegram_media/v.mp4'], { onStatus }));
+        expect(onStatus).not.toHaveBeenCalled();
+    });
+
+    test('emits uploading per chunk during postMessage', async () => {
+        statSync.mockReturnValue(mb(1));
+        const send = vi.fn().mockResolvedValue(undefined);
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
+        const onStatus = vi.fn();
+        await client.postMessage(payload(['/data/telegram_media/a.jpeg'], { onStatus }));
+        expect(onStatus).toHaveBeenCalledWith({ stage: 'uploading', chunk: 1, totalChunks: 1 });
+    });
+
+    test('emits failed when a chunk send rejects', async () => {
+        statSync.mockReturnValue(mb(1));
+        const send = vi.fn().mockRejectedValue(new Error('boom'));
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
+        const onStatus = vi.fn();
+        await client.postMessage(payload([], { onStatus }));
+        expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'Discord send error' });
+    });
+
+    test('a throwing onStatus callback never breaks buildChunks', async () => {
+        const onStatus = vi.fn(() => {
+            throw new Error('listener bug');
+        });
+        const chunks = await client.buildChunks(payload(['/data/telegram_media/v.mp4'], { onStatus }));
+        expect(chunks.filesChunks.flat().length).toBeGreaterThan(0);
+    });
+});

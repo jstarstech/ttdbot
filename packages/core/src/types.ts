@@ -9,6 +9,11 @@ export interface eventsGrouped {
 
 export type eventsGroupedResult = Omit<eventsGrouped, 'timeout'>;
 
+export type ForwardStatus =
+    | { stage: 'converting' }
+    | { stage: 'uploading'; chunk: number; totalChunks: number }
+    | { stage: 'failed'; reason: string };
+
 /**
  * Source-agnostic message handed to DiscordClient. Any ingest source (gramjs
  * user account, grammY bot, …) normalizes its native message into this shape,
@@ -25,4 +30,6 @@ export interface ForwardPayload {
     mediaFiles: (string | AttachmentBuilder)[];
     /** Originating Telegram user/chat id — used to look up an attribution override. */
     sourceId?: number;
+    /** Optional stage-transition callback so the source can show live progress. */
+    onStatus?: (status: ForwardStatus) => void;
 }

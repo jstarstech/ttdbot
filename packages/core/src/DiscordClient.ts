@@ -6,7 +6,7 @@ import winston from 'winston';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
 import MediaConvert from './MediaConvert.js';
-import { eventsGrouped, ForwardPayload } from './types.js';
+import { eventsGrouped, ForwardPayload, ForwardStatus } from './types.js';
 
 // Discord permits roughly 5 message sends per 5 seconds per channel. Throttle
 // proactively so bursts (large albums, several source channels) don't trip the limit.
@@ -57,6 +57,15 @@ export default class DiscordClient {
         this.discordClient.on('error', err => {
             this.logger.error(err);
         });
+    }
+
+    /** Invokes the payload's optional status callback; a throwing callback must never break sending. */
+    private emitStatus(payload: ForwardPayload | undefined, status: ForwardStatus): void {
+        try {
+            payload?.onStatus?.(status);
+        } catch (error) {
+            this.logger.error('onStatus callback failed', { error });
+        }
     }
 
     async init(): Promise<void> {
@@ -147,9 +156,15 @@ export default class DiscordClient {
 
             for (const [i, embeds] of chunks.embedsChunks.entries()) {
                 try {
+                    this.emitStatus(payload, {
+                        stage: 'uploading',
+                        chunk: i + 1,
+                        totalChunks: chunks.embedsChunks.length
+                    });
                     await this.sendThrottle(() => channel.send({ embeds, files: chunks.filesChunks[i] }));
                 } catch (error) {
                     this.logger.error(`Failed to send message chunk ${i}`, { error });
+                    this.emitStatus(payload, { stage: 'failed', reason: 'Discord send error' });
                 }
             }
         } catch (e) {
@@ -226,7 +241,7 @@ export default class DiscordClient {
                 }
 
                 if (mediaFile.endsWith('.mp4')) {
-                    const { files: videoFiles, sizes, remove } = await this.prepareVideo(mediaFile);
+                    const { files: videoFiles, sizes, remove } = await this.prepareVideo(mediaFile, payload);
 
                     for (const [n, videoFile] of videoFiles.entries()) {
                         if (chunkFullFor(sizes[n])) {
@@ -273,7 +288,10 @@ export default class DiscordClient {
      * limit. Returns the attachments, their byte sizes (parallel to files, so
      * buildChunks can budget the request size), and any derived files to clean up.
      */
-    async prepareVideo(mediaFile: string): Promise<{ files: AttachmentBuilder[]; sizes: number[]; remove: string[] }> {
+    async prepareVideo(
+        mediaFile: string,
+        statusTarget?: ForwardPayload
+    ): Promise<{ files: AttachmentBuilder[]; sizes: number[]; remove: string[] }> {
         const files: AttachmentBuilder[] = [];
         const sizes: number[] = [];
         const remove: string[] = [];
@@ -287,6 +305,7 @@ export default class DiscordClient {
             const codec = await MediaConvert.getCodec(mediaFile);
 
             if (codec === 'hevc' && fSize <= MAX_ATTACHMENT_MIB) {
+                this.emitStatus(statusTarget, { stage: 'converting' });
                 videoFile = `${this.config.dataDir}/convert/${path.parse(mediaFile).name}-h264.mp4`;
 
                 await new MediaConvert(this.config, this.logger).setSrc(mediaFile).setDst(videoFile).convert();
@@ -299,6 +318,7 @@ export default class DiscordClient {
                 files.push(new AttachmentBuilder(fs.createReadStream(videoFile), { name: path.basename(videoFile) }));
                 sizes.push(fs.statSync(videoFile).size);
             } else {
+                this.emitStatus(statusTarget, { stage: 'converting' });
                 const fileParts: string[] = await new MediaConvert(this.config, this.logger)
                     .setSrc(videoFile)
                     .splitBySize();
@@ -312,6 +332,7 @@ export default class DiscordClient {
             }
         } catch (error) {
             this.logger.error(`Failed to process video ${mediaFile}`, { error });
+            this.emitStatus(statusTarget, { stage: 'failed', reason: 'video processing failed' });
         }
 
         return { files, sizes, remove };
