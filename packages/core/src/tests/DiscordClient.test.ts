@@ -388,4 +388,19 @@ describe('DiscordClient status emissions', () => {
         const chunks = await client.buildChunks(payload(['/data/telegram_media/v.mp4'], { onStatus }));
         expect(chunks.filesChunks.flat().length).toBeGreaterThan(0);
     });
+
+    test('emits failed when the channel cannot be fetched', async () => {
+        vi.spyOn(client, 'getChannel').mockResolvedValue(undefined);
+        const onStatus = vi.fn();
+        await client.postMessage(payload([], { onStatus }));
+        expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'Discord channel unavailable' });
+    });
+
+    test('emits failed when buildChunks throws', async () => {
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send: vi.fn() } as never);
+        vi.spyOn(client, 'buildChunks').mockRejectedValue(new Error('boom'));
+        const onStatus = vi.fn();
+        await client.postMessage(payload([], { onStatus }));
+        expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'Discord forwarding error' });
+    });
 });

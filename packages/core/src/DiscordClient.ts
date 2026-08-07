@@ -147,6 +147,7 @@ export default class DiscordClient {
 
             if (channel === undefined) {
                 this.logger.error('Cannot fetch the channel');
+                this.emitStatus(payload, { stage: 'failed', reason: 'Discord channel unavailable' });
 
                 return;
             }
@@ -170,6 +171,7 @@ export default class DiscordClient {
         } catch (e) {
             this.logger.error(`Error forwarding message ${url}`, { url, title: payload.title });
             this.logger.error(e);
+            this.emitStatus(payload, { stage: 'failed', reason: 'Discord forwarding error' });
         }
 
         // Remove split video parts

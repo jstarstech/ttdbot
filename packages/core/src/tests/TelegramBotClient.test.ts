@@ -452,4 +452,30 @@ describe('TelegramBotClient DM status replies', () => {
 
         expect(onNewMessage).not.toHaveBeenCalled();
     });
+
+    test('video download fails with no caption: status finalizes ❌ Failed, no dispatch', async () => {
+        const bot = makeBot();
+        const onNewMessage = vi.fn();
+        bot.on('newMessage', onNewMessage);
+        vi.spyOn(bot as any, 'downloadMedia').mockResolvedValue({ status: 'failed', kind: 'video' });
+        const ctx = dmCtx({ video: { file_id: 'v' } });
+
+        await (bot as any).handle(ctx);
+
+        expect(ctx.api.editMessageText).toHaveBeenCalledWith(111, 42, '❌ Failed to fetch the video');
+        expect(onNewMessage).not.toHaveBeenCalled();
+    });
+
+    test('video download fails but caption present: dispatches text-only, ✅ Delivered notes the failure', async () => {
+        const bot = makeBot();
+        const onNewMessage = vi.fn();
+        bot.on('newMessage', onNewMessage);
+        vi.spyOn(bot as any, 'downloadMedia').mockResolvedValue({ status: 'failed', kind: 'video' });
+        const ctx = dmCtx({ video: { file_id: 'v' }, caption: 'look' });
+
+        await (bot as any).handle(ctx);
+
+        expect(onNewMessage).toHaveBeenCalledWith(expect.objectContaining({ text: 'look', mediaFiles: [] }));
+        expect(ctx.api.editMessageText).toHaveBeenCalledWith(111, 42, '✅ Delivered (text only; media download failed)');
+    });
 });
