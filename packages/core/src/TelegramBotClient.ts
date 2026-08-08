@@ -167,7 +167,8 @@ export default class TelegramBotClient extends TelegramSource {
                       classification.kind === 'supported'
                           ? '⬇️ Downloading from Telegram…'
                           : '📤 Forwarding to Discord…',
-                      this.logger
+                      this.logger,
+                      msg.message_id
                   )
                 : null;
 
@@ -214,10 +215,17 @@ export default class TelegramBotClient extends TelegramSource {
         }
     }
 
-    /** DM reply that never breaks the pipeline on Telegram errors. */
+    /**
+     * DM reply anchored to the submitted message (so it is clear which submission it
+     * refers to); never breaks the pipeline on Telegram errors.
+     */
     private async reply(ctx: Context, text: string): Promise<void> {
         try {
-            await ctx.reply(text);
+            const messageId = ctx.msg?.message_id;
+
+            await (messageId === undefined
+                ? ctx.reply(text)
+                : ctx.reply(text, { reply_parameters: { message_id: messageId } }));
         } catch (error) {
             this.logger.error('Failed to send status reply', { error });
         }
@@ -282,7 +290,8 @@ export default class TelegramBotClient extends TelegramSource {
                           rep.api,
                           rep.chat.id,
                           `📤 Processing album (${accepted} items)…`,
-                          this.logger
+                          this.logger,
+                          rep.msg?.message_id
                       )
                     : null;
 

@@ -296,7 +296,10 @@ describe('TelegramBotClient album grouping', () => {
         await vi.advanceTimersByTimeAsync(5000);
 
         expect(api.sendMessage).toHaveBeenCalledTimes(1);
-        expect(api.sendMessage).toHaveBeenCalledWith(111, '📤 Processing album (1 items)…');
+        // Anchored to the representative (caption-bearing) item of the album.
+        expect(api.sendMessage).toHaveBeenCalledWith(111, '📤 Processing album (1 items)…', {
+            reply_parameters: { message_id: 5 }
+        });
         expect(api.editMessageText).toHaveBeenCalledWith(111, 42, '✅ Delivered 1 of 2 items; skipped: audio');
         vi.useRealTimers();
     });
@@ -313,7 +316,9 @@ describe('TelegramBotClient album grouping', () => {
         await (bot as any).handle(ctx);
         await vi.advanceTimersByTimeAsync(5000);
 
-        expect(ctx.reply).toHaveBeenCalledWith('⚠️ Unsupported content (audio) — nothing to forward');
+        expect(ctx.reply).toHaveBeenCalledWith('⚠️ Unsupported content (audio) — nothing to forward', {
+            reply_parameters: { message_id: 5 }
+        });
         expect(onNewMessage).not.toHaveBeenCalled();
         expect(api.sendMessage).not.toHaveBeenCalled();
         vi.useRealTimers();
@@ -381,7 +386,9 @@ describe('TelegramBotClient DM status replies', () => {
 
         await (bot as any).handle(ctx);
 
-        expect(ctx.reply).toHaveBeenCalledWith('⚠️ Unsupported content (sticker) — nothing to forward');
+        expect(ctx.reply).toHaveBeenCalledWith('⚠️ Unsupported content (sticker) — nothing to forward', {
+            reply_parameters: { message_id: 5 }
+        });
         expect(onNewMessage).not.toHaveBeenCalled();
         expect(ctx.api.sendMessage).not.toHaveBeenCalled();
     });
@@ -393,7 +400,9 @@ describe('TelegramBotClient DM status replies', () => {
 
         await (bot as any).handle(ctx);
 
-        expect(ctx.api.sendMessage).toHaveBeenCalledWith(111, '📤 Forwarding to Discord…');
+        expect(ctx.api.sendMessage).toHaveBeenCalledWith(111, '📤 Forwarding to Discord…', {
+            reply_parameters: { message_id: 5 }
+        });
         expect(ctx.api.editMessageText).toHaveBeenCalledWith(111, 42, '✅ Delivered');
     });
 

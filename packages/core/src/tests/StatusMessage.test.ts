@@ -21,8 +21,19 @@ describe('StatusMessage', () => {
 
     test('create sends the initial message and remembers its id', async () => {
         const api = makeApi();
+
         const status = await StatusMessage.create(api, 7, 'start', mockLogger);
+
         expect(api.sendMessage).toHaveBeenCalledWith(7, 'start');
+        expect(status).not.toBeNull();
+    });
+
+    test('create anchors the status as a reply to the submitted message', async () => {
+        const api = makeApi();
+
+        const status = await StatusMessage.create(api, 7, 'start', mockLogger, 99);
+
+        expect(api.sendMessage).toHaveBeenCalledWith(7, 'start', { reply_parameters: { message_id: 99 } });
         expect(status).not.toBeNull();
     });
 

@@ -6,7 +6,11 @@ const EDIT_INTERVAL_MS = 1500;
 
 /** Minimal structural slice of grammY's Api that StatusMessage needs. */
 export interface StatusApi {
-    sendMessage(chatId: number, text: string): Promise<{ message_id: number }>;
+    sendMessage(
+        chatId: number,
+        text: string,
+        other?: { reply_parameters: { message_id: number } }
+    ): Promise<{ message_id: number }>;
     editMessageText(chatId: number, messageId: number, text: string): Promise<unknown>;
 }
 
@@ -33,15 +37,23 @@ export default class StatusMessage {
         this.lastEditAt = Date.now();
     }
 
-    /** Sends the initial status message; returns null (and logs) if Telegram rejects it. */
+    /**
+     * Sends the initial status message; returns null (and logs) if Telegram rejects it.
+     * Pass replyToMessageId to anchor the status as a reply to the submitted message, so
+     * a user with several submissions in flight can tell which one each status belongs to.
+     */
     static async create(
         api: StatusApi,
         chatId: number,
         text: string,
-        logger: winston.Logger
+        logger: winston.Logger,
+        replyToMessageId?: number
     ): Promise<StatusMessage | null> {
         try {
-            const message = await api.sendMessage(chatId, text);
+            const message =
+                replyToMessageId === undefined
+                    ? await api.sendMessage(chatId, text)
+                    : await api.sendMessage(chatId, text, { reply_parameters: { message_id: replyToMessageId } });
             return new StatusMessage(api, chatId, message.message_id, text, logger);
         } catch (error) {
             logger.error('Failed to send status message', { error });
