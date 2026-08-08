@@ -230,3 +230,37 @@ describe('TelegramBotClient album grouping', () => {
         expect(payload.url).toBe('https://t.me/mychan/1');
     });
 });
+
+describe('TelegramBotClient API reachability', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    test('logs an actionable error when the Bot API endpoint is unreachable', async () => {
+        const bot = makeBot();
+        bot['apiRoot'] = 'http://localhost:8081';
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
+
+        await (bot as any).warnIfApiUnreachable();
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+            expect.stringContaining('Bot API unreachable at http://localhost:8081'),
+            expect.anything()
+        );
+    });
+
+    test('stays quiet when the endpoint responds at all', async () => {
+        const bot = makeBot();
+        // A live Bot API server 404s on its root path — reachable is all that matters.
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+
+        await (bot as any).warnIfApiUnreachable();
+
+        expect(mockLogger.error).not.toHaveBeenCalled();
+    });
+});

@@ -8,6 +8,7 @@ import TelegramSource from './TelegramSource.js';
 import { ForwardPayload } from './types.js';
 
 const GROUP_DEBOUNCE_MS = 5000;
+const API_PROBE_TIMEOUT_MS = 5000;
 const DEFAULT_API_ROOT = 'https://api.telegram.org';
 
 interface AlbumBuffer {
@@ -70,11 +71,32 @@ export default class TelegramBotClient extends TelegramSource {
         this.bot.catch(err => this.logger.error('Telegram bot error', { error: err }));
 
         this.logger.info(`Telegram bot API endpoint: ${this.apiRoot}`);
+        await this.warnIfApiUnreachable();
         await this.bot.init();
         this.logger.info(`Running Telegram bot @${this.bot.botInfo.username}`);
 
         // start() long-polls until stopped; run it in the background so init() returns.
         void this.bot.start().catch(error => this.logger.error('Telegram bot polling stopped', { error }));
+    }
+
+    /**
+     * An unreachable api_server otherwise fails silently: grammY retries the connection
+     * forever, so the process looks healthy while receiving nothing at all. Probe once at
+     * startup and say so loudly. Any HTTP response counts as reachable (a live Bot API
+     * server 404s on its root path); only a connection failure is worth reporting.
+     */
+    private async warnIfApiUnreachable(): Promise<void> {
+        try {
+            await fetch(this.apiRoot, { signal: AbortSignal.timeout(API_PROBE_TIMEOUT_MS) });
+        } catch (error) {
+            this.logger.error(
+                `Bot API unreachable at ${this.apiRoot} — the bot will receive no updates. ` +
+                    'Check that the telegram-bot-api server is running ' +
+                    '(.local/telegram-bot-api.compose.yml for local dev), or set bot.api_server to "" ' +
+                    'to use the Telegram cloud API.',
+                { error }
+            );
+        }
     }
 
     /** Deny by default: accept only allow-listed channels (chat id) or DM submitters (user id). */
