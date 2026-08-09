@@ -51,7 +51,6 @@
     "@types/ffprobe-static": "^2.0.3",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/minio": "^7.1.1",
     "@types/prompts": "^2.4.9",
     "@typescript-eslint/eslint-plugin": "^8.60.0",
     "@typescript-eslint/parser": "^8.60.0",
