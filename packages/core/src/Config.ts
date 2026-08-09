@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import jsYaml from 'js-yaml';
+import { load as loadYaml } from 'js-yaml';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 export const workspaceRoot = path.resolve(__dirname, '../../..');
 
 export async function loadConfig(configFile = workspaceRoot + '/config.yml'): Promise<Config> {
-    return jsYaml.load(await fs.readFile(configFile, 'utf8')) as Config;
+    return loadYaml(await fs.readFile(configFile, 'utf8')) as Config;
 }
 
 export interface Config {
