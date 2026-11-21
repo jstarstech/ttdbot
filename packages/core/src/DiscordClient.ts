@@ -302,6 +302,16 @@ export default class DiscordClient {
 
             for (const mediaFile of chunk) {
                 if (mediaFile instanceof AttachmentBuilder) {
+                    // Pre-built attachment: count its bytes when known (a stream's size is not).
+                    const bytes = Buffer.isBuffer(mediaFile.attachment) ? mediaFile.attachment.length : 0;
+
+                    if (chunkFullFor(bytes)) {
+                        startNewChunk();
+                    }
+
+                    files.push(mediaFile);
+                    chunkBytes += bytes;
+
                     continue;
                 }
 

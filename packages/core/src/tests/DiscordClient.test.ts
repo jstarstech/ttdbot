@@ -227,6 +227,26 @@ describe('DiscordClient.buildChunks', () => {
         expect(chunks.failed).toBe(false);
     });
 
+    test('attaches pre-built AttachmentBuilder entries instead of dropping them', async () => {
+        const builder = new AttachmentBuilder(Buffer.alloc(1024), { name: 'prebuilt.png' });
+
+        const chunks = await client.buildChunks(payload([builder]));
+
+        expect(chunks.filesChunks[0]).toEqual([builder]);
+        expect(chunks.embedsChunks[0]).toHaveLength(1); // only the caption embed
+    });
+
+    test('counts pre-built attachments towards the 10-file cap', async () => {
+        const builders = Array.from(
+            { length: 11 },
+            (_, n) => new AttachmentBuilder(Buffer.alloc(16), { name: `prebuilt-${n}.png` })
+        );
+
+        const chunks = await client.buildChunks(payload(builders));
+
+        expect(chunks.filesChunks.map(files => files.length)).toEqual([10, 1]);
+    });
+
     test('uses the payload url for the embed', async () => {
         const chunks = await client.buildChunks(payload([], { url: 'https://example.org/' }));
 
