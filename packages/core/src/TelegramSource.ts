@@ -38,14 +38,17 @@ export default abstract class TelegramSource extends EventEmitter {
     abstract init(): Promise<unknown>;
 
     /**
-     * Emits the payload to all `newMessage` listeners and waits for them to finish
-     * before removing the downloaded media, so files are not deleted while a listener
-     * is still reading them.
+     * Emits the payload to all `newMessage` listeners and waits for them to finish.
+     * Downloaded media is removed only when every listener delivered the payload,
+     * so a failed forward can still be re-sent instead of being lost.
      */
     protected async dispatch(payload: ForwardPayload): Promise<void> {
         const listeners = this.listeners('newMessage') as ((payload: ForwardPayload) => unknown)[];
+        const results = await Promise.allSettled(listeners.map(listener => listener(payload)));
 
-        await Promise.allSettled(listeners.map(listener => listener(payload)));
+        if (results.some(result => result.status === 'rejected')) {
+            return;
+        }
 
         await this.removeMediaFiles(payload.mediaFiles);
     }

@@ -34,11 +34,8 @@ try {
     }
 
     for (const source of sources) {
-        source.addListener('newMessage', payload =>
-            discordClient.postMessage(payload).catch(error => {
-                logger.error(error);
-            })
-        );
+        // Rejections are collected by TelegramSource.dispatch, which then keeps the media.
+        source.addListener('newMessage', payload => discordClient.postMessage(payload));
 
         // Init failures of one source must not take down the others.
         try {

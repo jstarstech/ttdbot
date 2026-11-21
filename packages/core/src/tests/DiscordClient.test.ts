@@ -159,15 +159,16 @@ describe('DiscordClient.prepareVideo', () => {
         expect(files.map(f => f.name)).toEqual(['clip-1.mp4', 'clip-2.mp4']);
     });
 
-    test('logs and returns nothing when processing throws', async () => {
+    test('logs, marks the failure and returns nothing when processing throws', async () => {
         statSync.mockImplementation(() => {
             throw new Error('no such file');
         });
 
-        const { files, remove } = await client.prepareVideo('/data/telegram_media/clip.mp4');
+        const { files, remove, failed } = await client.prepareVideo('/data/telegram_media/clip.mp4');
 
         expect(files).toEqual([]);
         expect(remove).toEqual([]);
+        expect(failed).toBe(true);
         expect(mockLogger.error).toHaveBeenCalledWith(
             'Failed to process video /data/telegram_media/clip.mp4',
             expect.anything()
@@ -377,8 +378,27 @@ describe('DiscordClient status emissions', () => {
         const send = vi.fn().mockRejectedValue(new Error('boom'));
         vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
         const onStatus = vi.fn();
-        await client.postMessage(payload([], { onStatus }));
+        await expect(client.postMessage(payload([], { onStatus }))).rejects.toThrow('Failed to forward message');
         expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'Discord send error' });
+    });
+
+    test('reports a failed video transcode as a failure instead of a delivered message', async () => {
+        statSync.mockImplementation(() => {
+            throw new Error('no such file');
+        });
+        const send = vi.fn().mockResolvedValue(undefined);
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
+        const onStatus = vi.fn();
+
+        await expect(client.postMessage(payload(['/data/telegram_media/v.mp4'], { onStatus }))).rejects.toThrow(
+            'Failed to forward message'
+        );
+
+        // The caption still goes out, but without the video it is not a success.
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(send.mock.calls[0][0].files).toEqual([]);
+        expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'video processing failed' });
+        expect(mockLogger.info).not.toHaveBeenCalledWith(expect.stringContaining('Message forwarded'), expect.anything());
     });
 
     test('a throwing onStatus callback never breaks buildChunks', async () => {
@@ -392,7 +412,7 @@ describe('DiscordClient status emissions', () => {
     test('emits failed when the channel cannot be fetched', async () => {
         vi.spyOn(client, 'getChannel').mockResolvedValue(undefined);
         const onStatus = vi.fn();
-        await client.postMessage(payload([], { onStatus }));
+        await expect(client.postMessage(payload([], { onStatus }))).rejects.toThrow('Failed to forward message');
         expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'Discord channel unavailable' });
     });
 
@@ -400,7 +420,7 @@ describe('DiscordClient status emissions', () => {
         vi.spyOn(client, 'getChannel').mockResolvedValue({ send: vi.fn() } as never);
         vi.spyOn(client, 'buildChunks').mockRejectedValue(new Error('boom'));
         const onStatus = vi.fn();
-        await client.postMessage(payload([], { onStatus }));
+        await expect(client.postMessage(payload([], { onStatus }))).rejects.toThrow('Failed to forward message');
         expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'Discord forwarding error' });
     });
 });

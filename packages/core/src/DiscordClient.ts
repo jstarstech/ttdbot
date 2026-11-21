@@ -141,6 +141,7 @@ export default class DiscordClient {
     async postMessage(payload: ForwardPayload): Promise<void> {
         const url = payload.url;
         let filePartsToRemove: string[] = [];
+        let delivered = false;
 
         try {
             const channel = await this.getChannel();
@@ -148,30 +149,38 @@ export default class DiscordClient {
             if (channel === undefined) {
                 this.logger.error('Cannot fetch the channel');
                 this.emitStatus(payload, { stage: 'failed', reason: 'Discord channel unavailable' });
+            } else {
+                const chunks = await this.buildChunks(payload);
+                filePartsToRemove = chunks.filePartsToRemove;
+                delivered = !chunks.failed;
 
-                return;
-            }
-
-            const chunks = await this.buildChunks(payload);
-            filePartsToRemove = chunks.filePartsToRemove;
-
-            for (const [i, embeds] of chunks.embedsChunks.entries()) {
-                try {
-                    this.emitStatus(payload, {
-                        stage: 'uploading',
-                        chunk: i + 1,
-                        totalChunks: chunks.embedsChunks.length
-                    });
-                    await this.sendThrottle(() => channel.send({ embeds, files: chunks.filesChunks[i] }));
-                } catch (error) {
-                    this.logger.error(`Failed to send message chunk ${i}`, { error });
-                    this.emitStatus(payload, { stage: 'failed', reason: 'Discord send error' });
+                for (const [i, embeds] of chunks.embedsChunks.entries()) {
+                    try {
+                        this.emitStatus(payload, {
+                            stage: 'uploading',
+                            chunk: i + 1,
+                            totalChunks: chunks.embedsChunks.length
+                        });
+                        await this.sendThrottle(() => channel.send({ embeds, files: chunks.filesChunks[i] }));
+                    } catch (error) {
+                        this.logger.error(`Failed to send message chunk ${i}`, { error });
+                        this.emitStatus(payload, { stage: 'failed', reason: 'Discord send error' });
+                        delivered = false;
+                    }
                 }
             }
         } catch (e) {
             this.logger.error(`Error forwarding message ${url}`, { url, title: payload.title });
             this.logger.error(e);
             this.emitStatus(payload, { stage: 'failed', reason: 'Discord forwarding error' });
+            delivered = false;
+        }
+
+        if (!delivered) {
+            // Keep the undelivered parts so the media can be re-sent; the source
+            // deletes its downloads only when every listener reports success.
+            this.logger.error(`Failed to forward message ${url}`, { url, keptFiles: filePartsToRemove });
+            throw new Error(`Failed to forward message ${url}`);
         }
 
         // Remove split video parts
@@ -194,10 +203,12 @@ export default class DiscordClient {
         embedsChunks: APIEmbed[][];
         filesChunks: (string | AttachmentBuilder)[][];
         filePartsToRemove: string[];
+        failed: boolean;
     }> {
         const mediaFiles = payload.mediaFiles;
         const url = payload.url;
         const filePartsToRemove: string[] = [];
+        let failed = false;
 
         const color = this.toggleColor();
         const embedsChunks: APIEmbed[][] = [];
@@ -243,7 +254,13 @@ export default class DiscordClient {
                 }
 
                 if (mediaFile.endsWith('.mp4')) {
-                    const { files: videoFiles, sizes, remove } = await this.prepareVideo(mediaFile, payload);
+                    const {
+                        files: videoFiles,
+                        sizes,
+                        remove,
+                        failed: videoFailed
+                    } = await this.prepareVideo(mediaFile, payload);
+                    failed = failed || videoFailed;
 
                     for (const [n, videoFile] of videoFiles.entries()) {
                         if (chunkFullFor(sizes[n])) {
@@ -281,7 +298,7 @@ export default class DiscordClient {
             }
         }
 
-        return { embedsChunks, filesChunks, filePartsToRemove };
+        return { embedsChunks, filesChunks, filePartsToRemove, failed };
     }
 
     /**
@@ -293,10 +310,11 @@ export default class DiscordClient {
     async prepareVideo(
         mediaFile: string,
         statusTarget?: ForwardPayload
-    ): Promise<{ files: AttachmentBuilder[]; sizes: number[]; remove: string[] }> {
+    ): Promise<{ files: AttachmentBuilder[]; sizes: number[]; remove: string[]; failed: boolean }> {
         const files: AttachmentBuilder[] = [];
         const sizes: number[] = [];
         const remove: string[] = [];
+        let failed = false;
 
         try {
             let videoFile = mediaFile;
@@ -335,8 +353,9 @@ export default class DiscordClient {
         } catch (error) {
             this.logger.error(`Failed to process video ${mediaFile}`, { error });
             this.emitStatus(statusTarget, { stage: 'failed', reason: 'video processing failed' });
+            failed = true;
         }
 
-        return { files, sizes, remove };
+        return { files, sizes, remove, failed };
     }
 }

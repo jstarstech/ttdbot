@@ -254,6 +254,27 @@ describe('TelegramClientBot media cleanup', () => {
         expect(rm).toHaveBeenCalledWith('/data/telegram_media/a.jpeg', { force: true });
         expect(rm).toHaveBeenCalledWith('/data/telegram_media/b.mp4', { force: true });
     });
+
+    test('keeps downloaded media when a listener reports a failed forward', async () => {
+        const bot = Object.create(TelegramClientBot.prototype) as TelegramClientBot;
+        bot['config'] = mockConfig;
+        bot['logger'] = mockLogger;
+        bot['eventsGrouped'] = new Map<number, never>();
+
+        const rm = fs.rm as unknown as ReturnType<typeof vi.fn>;
+        rm.mockReset();
+
+        bot.on('newMessage', async () => {
+            throw new Error('Discord delivery failed');
+        });
+
+        await (bot as any).dispatchNewMessage({
+            events: [{ message: { id: 1, message: '', getSender: async () => ({ title: 'T', username: null }) } }],
+            mediaFiles: ['/data/telegram_media/a.jpeg']
+        });
+
+        expect(rm).not.toHaveBeenCalled();
+    });
 });
 
 describe('TelegramClientBot.downloadMedia', () => {
