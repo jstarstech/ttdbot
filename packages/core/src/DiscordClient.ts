@@ -6,7 +6,7 @@ import winston from 'winston';
 import { Config } from './Config.js';
 import _logger from './Logger.js';
 import MediaConvert from './MediaConvert.js';
-import { eventsGrouped, ForwardPayload, ForwardStatus } from './types.js';
+import { ForwardPayload, ForwardStatus } from './types.js';
 
 // Discord permits roughly 5 message sends per 5 seconds per channel. Throttle
 // proactively so bursts (large albums, several source channels) don't trip the limit.
@@ -63,7 +63,6 @@ function isTransientSendError(error: unknown): boolean {
 
 export default class DiscordClient {
     private readonly config: Config;
-    private eventsGrouped: Map<number, eventsGrouped>;
     private channel: TextChannel | undefined;
     private discordClient: Client;
     private colors: number[] = [HexColorToNumber('#0057b8'), HexColorToNumber('#ffd700')];
@@ -75,8 +74,6 @@ export default class DiscordClient {
         this.config = config;
         this.lastColor = this.colors[0];
         this.logger = logger || _logger;
-
-        this.eventsGrouped = new Map<number, eventsGrouped>();
 
         this.sendThrottle = throttledQueue({
             maxPerInterval: SEND_MAX_PER_INTERVAL,
