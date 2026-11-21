@@ -128,8 +128,10 @@ export default class MediaConvert {
         // prettier-ignore
         const ffmpegArgs = [
             '-y',
-            '-i', resolve(process.cwd(), file),
+            // Input seeking: ffmpeg jumps to the nearest keyframe instead of decoding the
+            // whole file and discarding frames. Output seeking made a many-part split O(n²).
             ...(curDuration > 0 ? ['-ss', curDuration.toString()] : []),
+            '-i', resolve(process.cwd(), file),
             '-fs', MAX_PART_SIZE_BYTES.toString(),
             '-c:v', 'libx264',
             '-preset', 'medium',

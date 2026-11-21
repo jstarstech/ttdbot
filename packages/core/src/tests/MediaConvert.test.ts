@@ -189,6 +189,37 @@ describe('MediaConvert', () => {
         await expect(promise).rejects.toThrow(/signal SIGSEGV.*Segmentation fault/s);
     });
 
+    test('seeks before the input so each split part decodes only its own segment', async () => {
+        const spawn = (await import('node:child_process')).spawn as unknown as ReturnType<typeof vi.fn>;
+        const child = new EventEmitter() as EventEmitter & { stderr: EventEmitter };
+        child.stderr = new EventEmitter();
+        spawn.mockClear();
+        spawn.mockReturnValue(child as never);
+
+        const promise = mediaConvert.splitVideoPart('/src/source.mp4', 30, '/out/source-2.mp4');
+        child.emit('close', 0, null);
+        await promise;
+
+        const args = spawn.mock.calls[0][1] as string[];
+        expect(args.indexOf('-ss')).toBeGreaterThanOrEqual(0);
+        expect(args.indexOf('-ss')).toBeLessThan(args.indexOf('-i'));
+        expect(args[args.indexOf('-ss') + 1]).toBe('30');
+    });
+
+    test('does not seek the first split part', async () => {
+        const spawn = (await import('node:child_process')).spawn as unknown as ReturnType<typeof vi.fn>;
+        const child = new EventEmitter() as EventEmitter & { stderr: EventEmitter };
+        child.stderr = new EventEmitter();
+        spawn.mockClear();
+        spawn.mockReturnValue(child as never);
+
+        const promise = mediaConvert.splitVideoPart('/src/source.mp4', 0, '/out/source-1.mp4');
+        child.emit('close', 0, null);
+        await promise;
+
+        expect(spawn.mock.calls[0][1]).not.toContain('-ss');
+    });
+
     // @TODO Enable these tests after adding source.mp4 file
     /*     test('should get video duration', async () => {
         const duration = await MediaConvert.getDuration('source.mp4');
