@@ -14,8 +14,7 @@ const DEFAULT_API_ROOT = 'https://api.telegram.org';
 
 interface AlbumBuffer {
     representative: Context;
-    mediaFiles: string[];
-    results: DownloadResult[];
+    items: Context[];
     timeout: ReturnType<typeof setTimeout> | null;
 }
 
@@ -137,7 +136,7 @@ export default class TelegramBotClient extends TelegramSource {
         const groupId = ctx.msg.media_group_id;
 
         if (groupId !== undefined) {
-            this.bufferAlbumItem(groupId, ctx, await this.downloadMedia(ctx));
+            this.bufferAlbumItem(groupId, ctx);
             return;
         }
 
@@ -231,12 +230,16 @@ export default class TelegramBotClient extends TelegramSource {
         }
     }
 
-    /** Accumulates album items sharing a media_group_id, flushing 5 s after the last one. */
-    private bufferAlbumItem(groupId: string, ctx: Context, result: DownloadResult): void {
+    /**
+     * Accumulates album items sharing a media_group_id, flushing 5 s after the last
+     * one *arrives*. Downloads happen at flush time, so a slow download cannot split
+     * the album or block the next update.
+     */
+    private bufferAlbumItem(groupId: string, ctx: Context): void {
         let album = this.albums.get(groupId);
 
         if (album === undefined) {
-            album = { representative: ctx, mediaFiles: [], results: [], timeout: null };
+            album = { representative: ctx, items: [], timeout: null };
             this.albums.set(groupId, album);
         }
 
@@ -247,10 +250,7 @@ export default class TelegramBotClient extends TelegramSource {
             album.representative = ctx;
         }
 
-        album.results.push(result);
-        if (result.status === 'ok') {
-            album.mediaFiles.push(result.file);
-        }
+        album.items.push(ctx);
 
         if (album.timeout) {
             clearTimeout(album.timeout);
@@ -268,14 +268,24 @@ export default class TelegramBotClient extends TelegramSource {
         const rep = album.representative;
         const text = rep.msg?.caption ?? rep.msg?.text ?? '';
         const isDm = rep.chat?.type === 'private';
-        const accepted = album.results.filter(r => r.status === 'ok').length;
-        const skippedKinds = [
-            ...new Set(
-                album.results.flatMap(r => (r.status === 'unsupported' || r.status === 'failed' ? [r.kind] : []))
-            )
-        ];
 
         try {
+            // Downloads run here, one at a time, after grouping is settled.
+            const results: DownloadResult[] = [];
+            for (const item of album.items) {
+                results.push(await this.downloadMedia(item));
+            }
+
+            const mediaFiles = results.flatMap(result => (result.status === 'ok' ? [result.file] : []));
+            const accepted = mediaFiles.length;
+            const skippedKinds = [
+                ...new Set(
+                    results.flatMap(result =>
+                        result.status === 'unsupported' || result.status === 'failed' ? [result.kind] : []
+                    )
+                )
+            ];
+
             if (accepted === 0 && !text) {
                 if (isDm) {
                     const kinds = skippedKinds.length > 0 ? ` (${skippedKinds.join(', ')})` : '';
@@ -295,7 +305,7 @@ export default class TelegramBotClient extends TelegramSource {
                       )
                     : null;
 
-            const payload = toForwardPayload(rep, album.mediaFiles);
+            const payload = toForwardPayload(rep, mediaFiles);
             const failures: string[] = [];
 
             if (status) {
@@ -316,7 +326,7 @@ export default class TelegramBotClient extends TelegramSource {
                 await status?.finalize(`❌ Failed: ${failures[0]}`);
             } else {
                 const skipped = skippedKinds.length > 0 ? `; skipped: ${skippedKinds.join(', ')}` : '';
-                await status?.finalize(`✅ Delivered ${accepted} of ${album.results.length} items${skipped}`);
+                await status?.finalize(`✅ Delivered ${accepted} of ${results.length} items${skipped}`);
             }
         } catch (error) {
             this.logger.error(`Failed to process album ${groupId}`, { error });

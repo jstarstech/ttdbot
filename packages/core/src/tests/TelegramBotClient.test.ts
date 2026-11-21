@@ -267,6 +267,36 @@ describe('TelegramBotClient album grouping', () => {
         expect(payload.url).toBe('https://t.me/mychan/1');
     });
 
+    test('groups an album even when a media download outlasts the debounce', async () => {
+        const bot = makeBot();
+        const slow = (file: string) => () =>
+            new Promise<{ status: 'ok'; file: string }>(resolve =>
+                setTimeout(() => resolve({ status: 'ok', file }), 6000)
+            );
+        vi.spyOn(bot as any, 'downloadMedia')
+            .mockImplementationOnce(slow('/m/a.jpeg'))
+            .mockImplementationOnce(slow('/m/b.jpeg'));
+        const onNewMessage = vi.fn();
+        bot.on('newMessage', onNewMessage);
+
+        const item = (id: number) => ({
+            msg: { message_id: id, media_group_id: 'G', photo: [{ file_id: `f${id}` }] },
+            chat: { id: -100222, username: 'mychan' }
+        });
+
+        // grammY handles updates one at a time: the next update starts only after handle() resolves.
+        let chain = Promise.resolve();
+        const deliver = (ctx: object) => (chain = chain.then(() => (bot as any).handle(ctx)));
+        deliver(item(1));
+        deliver(item(2));
+
+        await vi.advanceTimersByTimeAsync(20_000);
+        await chain;
+
+        expect(onNewMessage).toHaveBeenCalledTimes(1);
+        expect(onNewMessage.mock.calls[0][0].mediaFiles).toEqual(['/m/a.jpeg', '/m/b.jpeg']);
+    });
+
     const makeApi = () => ({
         sendMessage: vi.fn().mockResolvedValue({ message_id: 42 }),
         editMessageText: vi.fn().mockResolvedValue(true),
