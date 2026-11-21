@@ -13,6 +13,20 @@ import { eventsGrouped, ForwardPayload, ForwardStatus } from './types.js';
 const SEND_MAX_PER_INTERVAL = 5;
 const SEND_INTERVAL_MS = 5000;
 
+// One transient DNS/socket/TLS blip used to lose the chunk (and the video in it)
+// permanently. Retry those; a real API error needs a fix, not another attempt.
+const SEND_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+const TRANSIENT_ERROR_CODES = new Set([
+    'EAI_AGAIN',
+    'UND_ERR_CONNECT_TIMEOUT',
+    'ETIMEDOUT',
+    'ECONNRESET',
+    'ENETUNREACH',
+    'EHOSTUNREACH',
+    'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE'
+]);
+
 // Discord's non-Nitro upload limit is 10 MB. Attach files up to this size directly;
 // larger ones are split. Kept below 10 MB for multipart/embed overhead.
 const MAX_ATTACHMENT_MIB = 9;
@@ -27,6 +41,21 @@ const MAX_REQUEST_BYTES = 24 * 1024 * 1024;
 
 function HexColorToNumber(hexColor: string): number {
     return Number(hexColor.replace('#', '0x'));
+}
+
+/** True for a DNS/socket/TLS blip worth retrying; Discord API errors are permanent. */
+function isTransientSendError(error: unknown): boolean {
+    let current = error as { code?: unknown; cause?: unknown } | undefined;
+
+    for (let depth = 0; current !== undefined && depth < 5; depth++) {
+        if (typeof current.code === 'string' && TRANSIENT_ERROR_CODES.has(current.code)) {
+            return true;
+        }
+
+        current = current.cause as typeof current;
+    }
+
+    return false;
 }
 
 export default class DiscordClient {
@@ -138,6 +167,26 @@ export default class DiscordClient {
         return this.lastColor;
     }
 
+    /** Sends one chunk through the throttle, retrying transient network failures with backoff. */
+    private async sendChunk(send: () => Promise<unknown>): Promise<void> {
+        for (let attempt = 1; ; attempt++) {
+            try {
+                await this.sendThrottle(send);
+
+                return;
+            } catch (error) {
+                if (attempt >= SEND_ATTEMPTS || !isTransientSendError(error)) {
+                    throw error;
+                }
+
+                this.logger.warn(`Retrying Discord send after transient error (attempt ${attempt}/${SEND_ATTEMPTS})`, {
+                    error
+                });
+                await new Promise(resolve => setTimeout(resolve, RETRY_BASE_DELAY_MS * 2 ** (attempt - 1)));
+            }
+        }
+    }
+
     async postMessage(payload: ForwardPayload): Promise<void> {
         const url = payload.url;
         let filePartsToRemove: string[] = [];
@@ -161,7 +210,7 @@ export default class DiscordClient {
                             chunk: i + 1,
                             totalChunks: chunks.embedsChunks.length
                         });
-                        await this.sendThrottle(() => channel.send({ embeds, files: chunks.filesChunks[i] }));
+                        await this.sendChunk(() => channel.send({ embeds, files: chunks.filesChunks[i] }));
                     } catch (error) {
                         this.logger.error(`Failed to send message chunk ${i}`, { error });
                         this.emitStatus(payload, { stage: 'failed', reason: 'Discord send error' });

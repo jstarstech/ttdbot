@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AttachmentBuilder } from 'discord.js';
 import fs from 'fs-extra';
 import DiscordClient from '../DiscordClient';
@@ -236,7 +236,10 @@ describe('DiscordClient.buildChunks', () => {
         // Live failure (t.me/m4a1ks/201): 9 jpegs + a video split into 2 parts landed
         // 11 attachments in one message; Discord rejects >10 (50035 BASE_TYPE_MAX_LENGTH).
         statSyncBySize();
-        mocks.instance.splitBySize.mockResolvedValue(['/mock/data/dir/convert/v-1.mp4', '/mock/data/dir/convert/v-2.mp4']);
+        mocks.instance.splitBySize.mockResolvedValue([
+            '/mock/data/dir/convert/v-1.mp4',
+            '/mock/data/dir/convert/v-2.mp4'
+        ]);
 
         const jpegs = Array.from({ length: 9 }, (_, n) => `/data/telegram_media/img${n}.jpeg`);
         const chunks = await client.buildChunks(payload([...jpegs, '/data/telegram_media/v.mp4']));
@@ -398,7 +401,10 @@ describe('DiscordClient status emissions', () => {
         expect(send).toHaveBeenCalledTimes(1);
         expect(send.mock.calls[0][0].files).toEqual([]);
         expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'video processing failed' });
-        expect(mockLogger.info).not.toHaveBeenCalledWith(expect.stringContaining('Message forwarded'), expect.anything());
+        expect(mockLogger.info).not.toHaveBeenCalledWith(
+            expect.stringContaining('Message forwarded'),
+            expect.anything()
+        );
     });
 
     test('a throwing onStatus callback never breaks buildChunks', async () => {
@@ -422,5 +428,84 @@ describe('DiscordClient status emissions', () => {
         const onStatus = vi.fn();
         await expect(client.postMessage(payload([], { onStatus }))).rejects.toThrow('Failed to forward message');
         expect(onStatus).toHaveBeenCalledWith({ stage: 'failed', reason: 'Discord forwarding error' });
+    });
+});
+
+describe('DiscordClient send retries', () => {
+    let client: DiscordClient;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.instance.setSrc.mockReturnValue(mocks.instance);
+        mocks.instance.setDst.mockReturnValue(mocks.instance);
+        mocks.instance.convert.mockResolvedValue(true);
+        mocks.instance.splitBySize.mockResolvedValue([]);
+        mocks.getCodec.mockResolvedValue('h264');
+        statSync.mockReturnValue(mb(1));
+        createReadStream.mockReturnValue('STREAM');
+        client = new DiscordClient(mockConfig, mockLogger);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
+
+    const payload = (): ForwardPayload => ({ title: 'T', url: 'https://t.me/mychan/42', text: 'x', mediaFiles: [] });
+
+    const transient = () => Object.assign(new Error('dns'), { code: 'EAI_AGAIN' });
+
+    test('retries a transient send failure and delivers', async () => {
+        vi.useFakeTimers();
+        const send = vi.fn().mockRejectedValueOnce(transient()).mockResolvedValue(undefined);
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
+
+        const forwarding = client.postMessage(payload());
+        forwarding.catch(() => undefined);
+        await vi.advanceTimersByTimeAsync(10_000);
+        await forwarding;
+
+        expect(send).toHaveBeenCalledTimes(2);
+        expect(mockLogger.info).toHaveBeenCalledWith('Message forwarded https://t.me/mychan/42', expect.anything());
+    });
+
+    test('retries when the transient code sits on a wrapped error cause', async () => {
+        vi.useFakeTimers();
+        const wrapped = Object.assign(new Error('fetch failed'), { cause: transient() });
+        const send = vi.fn().mockRejectedValueOnce(wrapped).mockResolvedValue(undefined);
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
+
+        const forwarding = client.postMessage(payload());
+        forwarding.catch(() => undefined);
+        await vi.advanceTimersByTimeAsync(10_000);
+        await forwarding;
+
+        expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    test('gives up after three attempts and reports the failure', async () => {
+        vi.useFakeTimers();
+        const send = vi.fn().mockRejectedValue(transient());
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
+
+        const forwarding = client.postMessage(payload());
+        forwarding.catch(() => undefined);
+        await vi.advanceTimersByTimeAsync(30_000);
+        await expect(forwarding).rejects.toThrow('Failed to forward message');
+
+        expect(send).toHaveBeenCalledTimes(3);
+        expect(mockLogger.info).not.toHaveBeenCalledWith(
+            expect.stringContaining('Message forwarded'),
+            expect.anything()
+        );
+    });
+
+    test('does not retry a non-transient error', async () => {
+        const send = vi.fn().mockRejectedValue(new Error('Missing Access'));
+        vi.spyOn(client, 'getChannel').mockResolvedValue({ send } as never);
+
+        await expect(client.postMessage(payload())).rejects.toThrow('Failed to forward message');
+
+        expect(send).toHaveBeenCalledTimes(1);
     });
 });
