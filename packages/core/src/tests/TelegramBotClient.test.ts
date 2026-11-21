@@ -170,6 +170,33 @@ describe('TelegramBotClient.downloadMedia', () => {
         expect(result).toEqual({ status: 'ok', file: expect.stringMatching(/\.mp4$/) });
     });
 
+    test('keeps the real extension of an image document', async () => {
+        const bot = makeBot();
+        const getFile = vi.fn().mockResolvedValue({ file_path: 'documents/file.png' });
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1]).buffer })
+        );
+
+        const result = await (bot as any).downloadMedia({
+            msg: { document: { file_id: 'png', mime_type: 'image/png' } },
+            api: { getFile }
+        });
+
+        expect(result).toEqual({ status: 'ok', file: expect.stringMatching(/\.png$/) });
+    });
+
+    test('treats an image format Discord cannot preview as unsupported', async () => {
+        const bot = makeBot();
+
+        const result = await (bot as any).downloadMedia({
+            msg: { document: { file_id: 'heic', mime_type: 'image/heic' } },
+            api: { getFile: vi.fn() }
+        });
+
+        expect(result).toEqual({ status: 'unsupported', kind: 'document(image/heic)' });
+    });
+
     test('fetches a --local absolute path from api_files_url, stripping the server dir', async () => {
         const bot = makeBot({
             ...baseConfig,
@@ -515,6 +542,10 @@ describe('TelegramBotClient DM status replies', () => {
         await (bot as any).handle(ctx);
 
         expect(onNewMessage).toHaveBeenCalledWith(expect.objectContaining({ text: 'look', mediaFiles: [] }));
-        expect(ctx.api.editMessageText).toHaveBeenCalledWith(111, 42, '✅ Delivered (text only; media download failed)');
+        expect(ctx.api.editMessageText).toHaveBeenCalledWith(
+            111,
+            42,
+            '✅ Delivered (text only; media download failed)'
+        );
     });
 });

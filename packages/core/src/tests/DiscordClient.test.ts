@@ -218,6 +218,15 @@ describe('DiscordClient.buildChunks', () => {
         expect((chunk[1] as AttachmentBuilder).name).toBe('b.mp4');
     });
 
+    test('attaches a non-jpeg image instead of dropping it', async () => {
+        const chunks = await client.buildChunks(payload(['/data/telegram_media/photo.png']));
+
+        expect(chunks.embedsChunks).toHaveLength(1);
+        expect(chunks.embedsChunks[0][1].image?.url).toBe('attachment://photo.png');
+        expect(chunks.filesChunks[0]).toEqual(['/data/telegram_media/photo.png']);
+        expect(chunks.failed).toBe(false);
+    });
+
     test('uses the payload url for the embed', async () => {
         const chunks = await client.buildChunks(payload([], { url: 'https://example.org/' }));
 

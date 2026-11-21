@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import winston from 'winston';
 import { Config } from './Config.js';
-import { ForwardPayload } from './types.js';
+import { ForwardPayload, MediaExtension } from './types.js';
 
 const FILENAME_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -68,7 +68,7 @@ export default abstract class TelegramSource extends EventEmitter {
     }
 
     /** Writes downloaded bytes to `dataDir/telegram_media` with a random name; returns the path. */
-    protected async saveMediaFile(ext: 'jpeg' | 'mp4', data: Buffer | string): Promise<string> {
+    protected async saveMediaFile(ext: MediaExtension, data: Buffer | string): Promise<string> {
         const file = `${this.config.dataDir}/telegram_media/${randomName()}.${ext}`;
 
         if (Buffer.isBuffer(data)) {

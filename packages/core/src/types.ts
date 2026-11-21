@@ -14,6 +14,9 @@ export type ForwardStatus =
     | { stage: 'uploading'; chunk: number; totalChunks: number }
     | { stage: 'failed'; reason: string };
 
+/** Extensions the pipeline can store and attach. Discord previews the image ones. */
+export type MediaExtension = 'jpeg' | 'png' | 'webp' | 'gif' | 'mp4';
+
 /**
  * Source-agnostic message handed to DiscordClient. Any ingest source (gramjs
  * user account, grammY bot, …) normalizes its native message into this shape,

@@ -39,6 +39,9 @@ const MAX_FILES_PER_MESSAGE = 10;
 const MAX_EMBEDS_PER_MESSAGE = 10;
 const MAX_REQUEST_BYTES = 24 * 1024 * 1024;
 
+// Image types Discord renders in an embed; anything else is not attached.
+const IMAGE_EXTENSIONS = new Set(['.jpeg', '.jpg', '.png', '.webp', '.gif']);
+
 function HexColorToNumber(hexColor: string): number {
     return Number(hexColor.replace('#', '0x'));
 }
@@ -325,7 +328,7 @@ export default class DiscordClient {
                     continue;
                 }
 
-                if (mediaFile.endsWith('.jpeg')) {
+                if (IMAGE_EXTENSIONS.has(path.extname(mediaFile).toLowerCase())) {
                     const imageBytes = fs.statSync(mediaFile).size;
 
                     if (embeds.length >= MAX_EMBEDS_PER_MESSAGE || chunkFullFor(imageBytes)) {

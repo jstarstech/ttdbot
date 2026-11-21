@@ -6,11 +6,19 @@ import { Config } from './Config.js';
 import _logger from './Logger.js';
 import StatusMessage from './StatusMessage.js';
 import TelegramSource from './TelegramSource.js';
-import { ForwardPayload } from './types.js';
+import { ForwardPayload, MediaExtension } from './types.js';
 
 const GROUP_DEBOUNCE_MS = 5000;
 const API_PROBE_TIMEOUT_MS = 5000;
 const DEFAULT_API_ROOT = 'https://api.telegram.org';
+
+// Formats Discord renders in an embed; anything else stays a plain (unsupported) document.
+const IMAGE_EXTENSION_BY_MIME: Record<string, MediaExtension> = {
+    'image/jpeg': 'jpeg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif'
+};
 
 interface AlbumBuffer {
     representative: Context;
@@ -19,7 +27,7 @@ interface AlbumBuffer {
 }
 
 export type MediaClassification =
-    | { kind: 'supported'; ext: 'jpeg' | 'mp4'; fileId: string }
+    | { kind: 'supported'; ext: MediaExtension; fileId: string }
     | { kind: 'unsupported'; media: string } // media: 'sticker', 'voice', 'document(audio/mpeg)', …
     | { kind: 'none' };
 
@@ -182,7 +190,7 @@ export default class TelegramBotClient extends TelegramSource {
             } else {
                 if (!text) {
                     await status?.finalize(
-                        `❌ Failed to fetch the ${classification.ext === 'jpeg' ? 'photo' : 'video'}`
+                        `❌ Failed to fetch the ${classification.ext === 'mp4' ? 'video' : 'photo'}`
                     );
                     return;
                 }
@@ -350,8 +358,8 @@ export default class TelegramBotClient extends TelegramSource {
             if (mime.startsWith('video/')) {
                 return { kind: 'supported', ext: 'mp4', fileId: msg.document.file_id };
             }
-            if (mime.startsWith('image/')) {
-                return { kind: 'supported', ext: 'jpeg', fileId: msg.document.file_id };
+            if (IMAGE_EXTENSION_BY_MIME[mime]) {
+                return { kind: 'supported', ext: IMAGE_EXTENSION_BY_MIME[mime], fileId: msg.document.file_id };
             }
             return { kind: 'unsupported', media: `document(${mime || 'unknown'})` };
         }
@@ -373,7 +381,7 @@ export default class TelegramBotClient extends TelegramSource {
         }
 
         const { ext, fileId } = classification;
-        const mediaName = ext === 'jpeg' ? 'photo' : 'video';
+        const mediaName = ext === 'mp4' ? 'video' : 'photo';
 
         try {
             const file = await ctx.api.getFile(fileId);
