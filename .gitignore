@@ -9,3 +9,6 @@ node_modules
 data/
 
 /config.yml
+
+# Deploy secrets (telegram api id/hash for the self-hosted Bot API server)
+.env
